@@ -1,0 +1,26 @@
+.DS_Store
+.pnpm-store/
+node_modules/
+.idea/
+.vscode/
+*.iml
+
+.env
+.env.*
+!.env.example
+
+apps/web/.next/
+apps/web/node_modules/
+apps/mobile/.expo/
+apps/mobile/node_modules/
+apps/mobile/dist/
+apps/mobile/android/
+supabase/.branches/
+supabase/.temp/
+supabase/functions/.env
+
+# Release binaries are distributed outside source control.
+releases/*.aab
+releases/*.apk
+
+*.log

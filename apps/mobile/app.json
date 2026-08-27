@@ -1,0 +1,49 @@
+{
+  "expo": {
+    "name": "Patentory",
+    "slug": "patent-knowledge",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/patent-knowledge-icon-v2.png",
+    "scheme": "patentknowledge",
+    "userInterfaceStyle": "dark",
+    "ios": {
+      "icon": "./assets/expo.icon"
+    },
+    "android": {
+      "package": "com.cerensivri.patentknowledge",
+      "adaptiveIcon": {
+        "backgroundColor": "#0D1015",
+        "foregroundImage": "./assets/images/patent-knowledge-foreground-v2.png"
+      },
+      "predictiveBackGestureEnabled": true,
+      "softwareKeyboardLayoutMode": "resize"
+    },
+    "web": {
+      "output": "static",
+      "favicon": "./assets/images/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#0D1015",
+          "image": "./assets/images/patent-knowledge-foreground-v2.png",
+          "imageWidth": 76
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "ca8a6c0b-a344-4ae0-9158-5c7ce2a748e9"
+      }
+    },
+    "owner": "cernsvr"
+  }
+}

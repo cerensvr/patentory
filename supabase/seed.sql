@@ -1,0 +1,2 @@
+-- Reference data is versioned in migrations so linked and local projects stay identical.
+-- Add environment-specific development fixtures here when needed.

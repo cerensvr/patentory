@@ -1,0 +1,17 @@
+{
+  "name": "patent-knowledge",
+  "private": true,
+  "packageManager": "pnpm@11.9.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev:web": "pnpm --filter @patent-knowledge/web dev",
+    "dev:mobile": "pnpm --filter @patent-knowledge/mobile start",
+    "build:web": "pnpm --filter @patent-knowledge/web build",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "pnpm -r lint",
+    "test:edge": "node scripts/edge-functions-e2e.mjs",
+    "test": "pnpm -r test"
+  }
+}

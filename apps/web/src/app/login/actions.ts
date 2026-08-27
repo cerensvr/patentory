@@ -1,11 +1,29 @@
 'use server';
 
 import { redirect } from 'next/navigation';
+import { headers } from 'next/headers';
 
 import { createClient } from '@/lib/supabase/server';
 
 function value(formData: FormData, key: string) {
   return String(formData.get(key) ?? '').trim();
+}
+
+async function requestOrigin() {
+  const requestHeaders = await headers();
+  const origin = requestHeaders.get('origin');
+  if (origin?.startsWith('https://') || origin?.startsWith('http://')) {
+    return origin.replace(/\/$/, '');
+  }
+
+  const host = requestHeaders.get('x-forwarded-host') ?? requestHeaders.get('host');
+  if (host) {
+    const protocol = requestHeaders.get('x-forwarded-proto')
+      ?? (host.startsWith('localhost') || host.startsWith('127.0.0.1') ? 'http' : 'https');
+    return `${protocol}://${host}`;
+  }
+
+  return process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000';
 }
 
 export async function signIn(formData: FormData) {
@@ -44,7 +62,7 @@ export async function signUp(formData: FormData) {
 export async function sendPasswordReset(formData: FormData) {
   const email = value(formData, 'email');
   const supabase = await createClient();
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000';
+  const siteUrl = await requestOrigin();
   const { error } = await supabase.auth.resetPasswordForEmail(email, {
     redirectTo: `${siteUrl}/auth/callback?next=/update-password`,
   });

@@ -14,5 +14,5 @@ apps/web/node_modules
 docs
 releases
 scripts
-supabase
+/supabase
 packages/supabase/node_modules

@@ -5,6 +5,9 @@
   "engines": {
     "node": ">=22"
   },
+  "devDependencies": {
+    "next": "16.3.3"
+  },
   "scripts": {
     "dev:web": "pnpm --filter @patent-knowledge/web dev",
     "dev:mobile": "pnpm --filter @patent-knowledge/mobile start",

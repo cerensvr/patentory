@@ -24,3 +24,4 @@ releases/*.aab
 releases/*.apk
 
 *.log
+.vercel

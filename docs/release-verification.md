@@ -21,6 +21,7 @@ Verification date: 28 August 2026 (Europe/Istanbul)
 - `analyze-patent`, `review-ai-suggestion`, and `delete-account` are active and require JWT authentication.
 - A temporary second user could not read the demo patent or obtain a signed URL for its PDF; the user was deleted after the test.
 - Supabase performance advisors report no unindexed foreign keys. The remaining performance notices are expected unused-index telemetry for this new, low-traffic project.
+- The only security-advisor warning is leaked-password protection, which Supabase documents as Pro-only; it remains off to preserve the requested free plan. Eight-character alphanumeric minimums and refresh-token rotation are enabled.
 - Supabase Auth Site URL is `https://patentory.vercel.app`; exact web, localhost, and Android password-recovery redirects are allow-listed.
 - The unrelated Ata Yumurta Supabase project was not used or modified.
 

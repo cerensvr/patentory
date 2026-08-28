@@ -48,18 +48,19 @@ Verification date: 28 August 2026 (Europe/Istanbul)
 - Native debug APK built successfully against compile/target API 36.
 - Installed and launched on Android emulator `Medium_Phone`.
 - SecureStore chunk-key compatibility issue found during runtime testing and fixed.
-- Demo login passed; shared library, patent detail, private PDF action, AI failure state, and manual patent form were inspected.
+- Demo login passed; shared library, patent detail, private PDF action, AI failure state, and controlled patent form were inspected.
+- The real `US20210355267A1.pdf` was selected in the emulator. Publication number, country, title, assignee, publication date, and abstract/summary were populated automatically while remaining editable.
 - App display name and visible brand are Patentory; internal package ID remains `com.cerensivri.patentknowledge`.
 
 ## Production bundle
 
-- EAS build ID: `86a8dcbf-aaa0-4264-8b80-8a49a7eef345`
-- Version: `1.0.0`; Android version code: `7`
+- EAS build ID: `59170fba-4184-45b2-935f-c0a68847f1ae`
+- Version: `1.0.0`; Android version code: `9`
 - Distribution: Google Play Store Android App Bundle (`.aab`)
-- Status: finished and downloaded as `releases/Patentory-1.0.0-build7.aab`.
-- EAS artifact: [download the signed AAB](https://expo.dev/artifacts/eas/AIey8Qf9Ow7pDqiDFCDkN2SqzsXD610YJx-idqRf2ew.aab).
-- Size: 68,289,809 bytes.
-- SHA-256: `21a767eb6b5b432cd620144c26472085ea4510d431983203c038aef330c88210`.
+- Status: finished and downloaded as `releases/Patentory-1.0.0-build9.aab`.
+- EAS artifact: [download the signed AAB](https://expo.dev/artifacts/eas/QZb138r1HZZrRYMAVuHYPqkPGwuvJGc0_CPghDs7hhw.aab).
+- Size: 68,292,944 bytes.
+- SHA-256: `929657ff74b9145b9b8cb0fe86590a9bd0a09c79c84a2fc7e52a065f57a247c0`.
 - Archive integrity, Android signing, and Bundletool 1.18.3 validation passed. The signing certificate is the expected self-signed Android upload key.
 - Hermes bytecode inspection confirms the production bundle contains `https://patentory.vercel.app/privacy`.
 

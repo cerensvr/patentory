@@ -35,6 +35,10 @@ function meta(tags: Array<Record<string, string>>, name: string, scheme?: string
   return tags.find((tag) => tag.name?.toLowerCase() === name.toLowerCase() && (!scheme || tag.scheme?.toLowerCase() === scheme.toLowerCase()))?.content ?? null;
 }
 
+function publicationDate(tags: Array<Record<string, string>>) {
+  return tags.find((tag) => tag.name?.toLowerCase() === 'dc.date' && tag.scheme?.toLowerCase() !== 'datesubmitted')?.content ?? null;
+}
+
 Deno.serve(async (request) => {
   if (request.method === 'OPTIONS') return new Response('ok', { headers: CORS_HEADERS });
   if (request.method !== 'POST') return json({ error: 'Yalnızca POST desteklenir.' }, 405);
@@ -80,7 +84,7 @@ Deno.serve(async (request) => {
       title,
       patent_number: titleNumber,
       country_code: numberMatch[1],
-      publication_date: meta(tags, 'DC.date', 'issue'),
+      publication_date: publicationDate(tags),
       assignee: meta(tags, 'DC.contributor', 'assignee'),
       abstract: meta(tags, 'DC.description'),
       source_url: sourceUrl,

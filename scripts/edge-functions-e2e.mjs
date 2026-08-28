@@ -113,6 +113,9 @@ try {
   assert.equal(lookedUp.data.metadata.patent_number, 'US3684617A');
   assert.equal(lookedUp.data.metadata.title, 'Curable epoxy resin/acrylic resin mixtures');
   assert.equal(lookedUp.data.metadata.publication_date, '1972-08-15');
+  const applicationLookup = await request('/functions/v1/lookup-patent-metadata', { method: 'POST', token: owner.token, body: { patentNumber: 'US20210355267A1' } });
+  assert.equal(applicationLookup.response.status, 200, JSON.stringify(applicationLookup.data));
+  assert.equal(applicationLookup.data.metadata.publication_date, '2021-11-18');
   const patent = await request('/rest/v1/patents?select=id', { method: 'POST', token: owner.token, body: { owner_user_id: owner.id, title: 'AI E2E patent', patent_number: 'QA-AI-001', country_code: 'US' } });
   assert.equal(patent.response.status, 201, JSON.stringify(patent.data));
   const patentId = patent.data[0].id;

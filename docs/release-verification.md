@@ -6,7 +6,7 @@ Verification date: 28 August 2026 (Europe/Istanbul)
 
 - Workspace TypeScript: passed for shared Supabase types, Next.js web, and Expo Android.
 - Workspace lint: passed for web and mobile.
-- Next.js production build: passed; 12 routes generated or server-rendered as expected.
+- Next.js production build: passed locally and on Vercel; 12 routes generated or server-rendered as expected.
 - Expo Android production export: passed; Hermes bundle and 27 assets generated.
 - Expo Doctor: 21/21 checks passed.
 - Expo dependency compatibility check: passed.
@@ -17,10 +17,20 @@ Verification date: 28 August 2026 (Europe/Istanbul)
 ## Live Supabase verification
 
 - Dedicated project ref: `xuabyqeqheebplinbwmq` (technical project name: Patent Knowledge).
-- Six local PostgreSQL migrations match the six remote migrations.
+- Seven local PostgreSQL migrations match the seven remote migrations.
 - `analyze-patent`, `review-ai-suggestion`, and `delete-account` are active and require JWT authentication.
 - A temporary second user could not read the demo patent or obtain a signed URL for its PDF; the user was deleted after the test.
+- Supabase performance advisors report no unindexed foreign keys. The remaining performance notices are expected unused-index telemetry for this new, low-traffic project.
+- Supabase Auth Site URL is `https://patentory.vercel.app`; exact web, localhost, and Android password-recovery redirects are allow-listed.
 - The unrelated Ata Yumurta Supabase project was not used or modified.
+
+## Production web verification
+
+- Canonical URL: [https://patentory.vercel.app](https://patentory.vercel.app)
+- `/login`, `/privacy`, and `/delete-account` return HTTP 200; `/` redirects unauthenticated users to `/login`.
+- Vercel production build and clean-domain alias passed.
+- HTTPS includes HSTS, Content Security Policy, frame denial, MIME-sniffing protection, strict referrer policy, and a restrictive browser permissions policy.
+- Vercel stores only the Supabase URL, publishable key, and canonical site URL as public client configuration. No service-role or OpenAI key is present.
 
 ## Real patent test
 
@@ -42,17 +52,18 @@ Verification date: 28 August 2026 (Europe/Istanbul)
 
 ## Production bundle
 
-- EAS build ID: `ba585d6d-e002-4e01-be3e-efc14290a9ec`
-- Version: `1.0.0`; Android version code: `6`
+- EAS build ID: `86a8dcbf-aaa0-4264-8b80-8a49a7eef345`
+- Version: `1.0.0`; Android version code: `7`
 - Distribution: Google Play Store Android App Bundle (`.aab`)
-- Status: finished and downloaded as `releases/Patentory-1.0.0-build6.aab`.
-- Size: 68,289,900 bytes.
-- SHA-256: `8d4e71a06732b727786f0e194ca95cb299761f724436c7ebb91db182850837b8`.
-- Archive integrity, Android signing, and Bundletool validation passed. The signing certificate is the expected self-signed Android upload key.
+- Status: finished and downloaded as `releases/Patentory-1.0.0-build7.aab`.
+- EAS artifact: [download the signed AAB](https://expo.dev/artifacts/eas/AIey8Qf9Ow7pDqiDFCDkN2SqzsXD610YJx-idqRf2ew.aab).
+- Size: 68,289,809 bytes.
+- SHA-256: `21a767eb6b5b432cd620144c26472085ea4510d431983203c038aef330c88210`.
+- Archive integrity, Android signing, and Bundletool 1.18.3 validation passed. The signing certificate is the expected self-signed Android upload key.
+- Hermes bytecode inspection confirms the production bundle contains `https://patentory.vercel.app/privacy`.
 
 ## External release inputs still required
 
-- A final public HTTPS web domain for the privacy and account-deletion pages.
 - Legal developer/entity name and a monitored support e-mail for the privacy policy and Play listing.
 - Production SMTP configuration and final e-mail-link tests.
 - Play Console listing content, Data Safety/content-rating declarations, screenshots, and staged rollout approval.

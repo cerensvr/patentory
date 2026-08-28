@@ -7,7 +7,9 @@ const contentSecurityPolicy = [
   "style-src 'self' 'unsafe-inline'",
   "font-src 'self' data:",
   "img-src 'self' data: blob:",
-  "connect-src 'self' https://*.supabase.co wss://*.supabase.co http://127.0.0.1:54321 ws://127.0.0.1:54321",
+  `connect-src 'self' https://*.supabase.co wss://*.supabase.co${
+    isDevelopment ? " http://127.0.0.1:54321 ws://127.0.0.1:54321" : ""
+  }`,
   "object-src 'none'",
   "base-uri 'self'",
   "form-action 'self'",

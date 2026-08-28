@@ -39,11 +39,7 @@ Deno.serve(async (request) => {
 
   if (decision === 'ACCEPTED') {
     if (suggestion.suggestion_type === 'CHEMICAL' || suggestion.suggestion_type === 'COMMERCIAL_PRODUCT') {
-      let roleId = suggestion.matched_role_id;
-      if (!roleId) {
-        const { data: otherRole } = await serviceClient.from('chemical_roles').select('id').ilike('name', 'Other').limit(1).maybeSingle();
-        roleId = otherRole?.id ?? null;
-      }
+      const roleId = suggestion.matched_role_id;
       if (!roleId) return response({ error: 'Kimyasal rolü eşleştirilemedi.' }, 422);
       const rawName = !suggestion.matched_chemical_id && !suggestion.matched_commercial_product_id ? suggestion.label : null;
       let existingQuery = serviceClient.from('patent_chemicals').select('id').eq('patent_id', suggestion.patent_id).eq('chemical_role_id', roleId);

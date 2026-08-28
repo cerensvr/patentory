@@ -85,9 +85,12 @@ Viewing uses authenticated downloads or short-lived signed URLs created under th
 ## AI analysis boundary
 
 - `analyze-patent` verifies the caller with `auth.getUser()`, re-checks patent ownership, enforces PDF MIME/size and per-user run limits, then creates a three-minute signed URL for OpenAI.
-- The OpenAI Responses API receives the PDF at high detail with strict JSON Schema output and `store: false`. The PDF is treated as untrusted data; document instructions cannot override the analysis prompt.
+- The OpenAI Responses API receives the PDF at high detail with strict JSON Schema output and `store: false`. The PDF is treated as untrusted data; document instructions cannot override the analysis prompt. A hashed user/patent identifier is used for provider-side abuse monitoring; no e-mail address is sent.
 - Canonical chemical, synonym, and commercial-product matching remain separate. A trade name is never inferred to be a pure chemical without an explicit catalog mapping.
-- Every suggestion includes confidence and short page evidence. `review-ai-suggestion` re-verifies the user and applies only an explicit accept/reject decision.
+- Runtime validation trims and bounds every field, deduplicates findings, and excludes suggestions below the confidence/evidence floor from the actionable review queue. Claims, prior art, description, and experimental examples are explicitly separated in the prompt.
+- Every actionable suggestion includes confidence and a short direct evidence quote. `review-ai-suggestion` re-verifies the user and applies only an explicit accept/reject decision; unmatched roles cannot silently fall back to “Other”.
+- Transient provider failures are retried once within an overall deadline. Quota, configuration, timeout, and incomplete-response failures use safe user-facing error codes while the manual workflow stays available.
+- `lookup-patent-metadata` is an authenticated, free metadata fallback. It recognizes a publication number from the selected PDF filename and retrieves bibliographic fields without sending the PDF to an AI provider.
 - `OPENAI_API_KEY`, the service-role key, and signed URLs never enter client bundles or application logs.
 
 ## Authentication

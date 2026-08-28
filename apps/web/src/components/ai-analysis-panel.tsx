@@ -11,6 +11,7 @@ type Suggestion = Database['public']['Tables']['ai_analysis_suggestions']['Row']
 type PerformanceMetric = { name: string; value: string; unit: string | null; context: string; page: number | null };
 
 type AnalysisResult = {
+  document_language?: string;
   independent_claims?: Array<{ claim_number: string; summary: string; evidence_quote: string; page: number | null }>;
   process_steps?: string[];
   performance_metrics?: PerformanceMetric[];
@@ -104,11 +105,17 @@ export function AiAnalysisPanel({ patentId, hasPdf, initialRun, initialSuggestio
       {message && <p className="form-message success">{message}</p>}
       {error && <p className="form-message error">{error}</p>}
       {initialRun?.status === 'FAILED' && initialRun.error_message && (
-        <p className="form-message error">Son tarama tamamlanamadı: {initialRun.error_message}</p>
+        <p className="form-message error">Son tarama tamamlanamadı: {initialRun.error_message} <a href="#manual-patent-editor">Bilgileri manuel düzenleyin.</a></p>
       )}
 
       {initialRun?.executive_summary && (
         <div className="analysis-report">
+          <div className="analysis-quality">
+            <QualityMetric label="Kanıtlı öneri" value={String(initialSuggestions.length)} />
+            <QualityMetric label="Yüksek güven" value={String(initialSuggestions.filter((item) => Number(item.confidence_score ?? 0) >= .85).length)} />
+            <QualityMetric label="Belge dili" value={analysis?.document_language || '—'} />
+            <QualityMetric label="Uyarı" value={String(analysis?.warnings?.length ?? 0)} />
+          </div>
           <ReportSection title="Yönetici özeti" text={initialRun.executive_summary} />
           <div className="analysis-columns">
             <ReportSection title="Teknik problem" text={initialRun.technical_problem} />
@@ -143,9 +150,16 @@ export function AiAnalysisPanel({ patentId, hasPdf, initialRun, initialSuggestio
               ))}</div>
             </details>
           )}
+          {!!analysis?.process_steps?.length && (
+            <details className="analysis-details">
+              <summary>Proses adımları <span>{analysis.process_steps.length}</span></summary>
+              <div>{analysis.process_steps.map((step, index) => <article key={`${index}-${step}`}><strong>{index + 1}. adım</strong><p>{step}</p></article>)}</div>
+            </details>
+          )}
           {!!analysis?.performance_metrics?.length && (
             <PerformanceCharts metrics={analysis.performance_metrics} />
           )}
+          {!!analysis?.warnings?.length && <ReportList title="Analiz uyarıları" values={analysis.warnings} />}
         </div>
       )}
 
@@ -155,9 +169,10 @@ export function AiAnalysisPanel({ patentId, hasPdf, initialRun, initialSuggestio
           <div className="suggestion-grid">
             {initialSuggestions.map((suggestion) => {
               const canAccept = canAcceptSuggestion(suggestion);
+              const confidence = Number(suggestion.confidence_score ?? 0);
               return (
                 <article className={`suggestion-card review-${suggestion.review_status.toLowerCase()}`} key={suggestion.id}>
-                  <div className="suggestion-meta"><span>{TYPE_LABELS[suggestion.suggestion_type] ?? suggestion.suggestion_type}</span><b>%{Math.round(Number(suggestion.confidence_score ?? 0) * 100)} güven</b></div>
+                  <div className="suggestion-meta"><span>{TYPE_LABELS[suggestion.suggestion_type] ?? suggestion.suggestion_type}</span><b className={`confidence-${confidenceBand(confidence)}`}>{confidenceLabel(confidence)} · %{Math.round(confidence * 100)}</b></div>
                   <h4>{suggestion.label}</h4>
                   {suggestion.normalized_value && suggestion.normalized_value !== suggestion.label && <p className="normalized-value">Kanonik aday: {suggestion.normalized_value}</p>}
                   <Evidence quote={suggestion.evidence_quote} page={suggestion.evidence_page} />
@@ -183,6 +198,10 @@ export function AiAnalysisPanel({ patentId, hasPdf, initialRun, initialSuggestio
 function ReportSection({ title, text }: { title: string; text: string | null }) {
   if (!text) return null;
   return <section className="report-section"><small>{title.toUpperCase()}</small><p>{text}</p></section>;
+}
+
+function QualityMetric({ label, value }: { label: string; value: string }) {
+  return <div><small>{label.toUpperCase()}</small><strong>{value}</strong></div>;
 }
 
 function ReportList({ title, values }: { title: string; values: string[] }) {
@@ -251,6 +270,14 @@ function canAcceptSuggestion(item: Suggestion) {
   if (item.suggestion_type === 'APPLICATION_CATEGORY') return Boolean(item.matched_category_id);
   if (item.suggestion_type === 'TECHNICAL_PURPOSE') return Boolean(item.matched_purpose_id);
   return Boolean(item.matched_role_id);
+}
+
+function confidenceBand(value: number) {
+  return value >= .85 ? 'high' : value >= .7 ? 'medium' : 'low';
+}
+
+function confidenceLabel(value: number) {
+  return value >= .85 ? 'Yüksek güven' : value >= .7 ? 'Orta güven' : 'Kontrol gerekli';
 }
 
 async function responseMessage(context: unknown) {

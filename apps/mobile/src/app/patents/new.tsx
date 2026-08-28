@@ -18,8 +18,10 @@ export default function NewPatentScreen() {
   const [title, setTitle] = useState('');
   const [patentNumber, setPatentNumber] = useState('');
   const [countryCode, setCountryCode] = useState('');
+  const [publicationDate, setPublicationDate] = useState('');
   const [assignee, setAssignee] = useState('');
   const [summary, setSummary] = useState('');
+  const [abstractText, setAbstractText] = useState('');
   const [notes, setNotes] = useState('');
   const [tags, setTags] = useState('');
   const [categories, setCategories] = useState<Named[]>([]);
@@ -31,6 +33,8 @@ export default function NewPatentScreen() {
   const [chemicalIds, setChemicalIds] = useState<string[]>([]);
   const [roleId, setRoleId] = useState('');
   const [saving, setSaving] = useState(false);
+  const [lookupBusy, setLookupBusy] = useState(false);
+  const [lookupMessage, setLookupMessage] = useState<string>();
 
   useEffect(() => {
     Promise.all([
@@ -51,7 +55,26 @@ export default function NewPatentScreen() {
     if (!result.canceled) {
       const asset = result.assets[0];
       if ((asset.size ?? 0) > 50 * 1024 * 1024) Alert.alert('Dosya çok büyük', 'PDF en fazla 50 MB olabilir.');
-      else setPdf(asset);
+      else {
+        setPdf(asset);
+        const inferred = inferPatentNumber(asset.name);
+        if (!inferred) { setLookupMessage('Patent numarası dosya adından okunamadı; alanları manuel doldurun.'); return; }
+        setPatentNumber((current) => current || inferred.number);
+        setCountryCode((current) => current || inferred.country);
+        setLookupBusy(true); setLookupMessage(`${inferred.number} için yayın bilgileri aranıyor…`);
+        const { data, error } = await supabase.functions.invoke('lookup-patent-metadata', { body: { patentNumber: inferred.number } });
+        setLookupBusy(false);
+        if (error || data?.error || !data?.metadata) { setLookupMessage('Numara ve ülke dolduruldu; diğer alanları manuel tamamlayabilirsiniz.'); return; }
+        const metadata = data.metadata as PatentMetadata;
+        setTitle((current) => current || metadata.title || '');
+        setPatentNumber((current) => normalizeNumber(current) === normalizeNumber(inferred.number) ? metadata.patent_number || current : current);
+        setCountryCode((current) => current || metadata.country_code || '');
+        setPublicationDate((current) => current || metadata.publication_date || '');
+        setAssignee((current) => current || metadata.assignee || '');
+        setAbstractText((current) => current || metadata.abstract || '');
+        setSummary((current) => current || metadata.abstract?.slice(0, 1_500) || '');
+        setLookupMessage('Yayın bilgileri otomatik dolduruldu; kaydetmeden önce kontrol edin.');
+      }
     }
   };
 
@@ -64,7 +87,8 @@ export default function NewPatentScreen() {
     const { error: insertError } = await supabase.from('patents').insert({
       id: patentId, owner_user_id: session.user.id, title: title.trim(),
       patent_number: patentNumber.trim() || null, country_code: countryCode.trim().toUpperCase() || null,
-      assignee: assignee.trim() || null, user_summary: summary.trim() || null, notes: notes.trim() || null,
+      publication_date: publicationDate || null, assignee: assignee.trim() || null,
+      abstract_text: abstractText.trim() || null, user_summary: summary.trim() || null, notes: notes.trim() || null,
     });
     if (insertError) { setSaving(false); Alert.alert('Patent kaydedilemedi', insertError.message); return; }
 
@@ -101,13 +125,16 @@ export default function NewPatentScreen() {
   return (
     <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
       <Stack.Screen options={{ title: 'Patent ekle' }} />
-      <Text style={styles.eyebrow}>MANUEL İŞ AKIŞI</Text><Text style={styles.title}>Yeni patent</Text><Text style={styles.copy}>PDF, metadata ve sınıflandırma tek akışta.</Text>
+      <Text style={styles.eyebrow}>KONTROLLÜ İŞ AKIŞI</Text><Text style={styles.title}>Yeni patent</Text><Text style={styles.copy}>PDF’den yayın bilgilerini otomatik getirin; kaydetmeden önce düzenleyin.</Text>
       <Section title="01 · PDF ve bilgiler">
         <Pressable onPress={pickPdf} style={[styles.fileButton, pdf && styles.fileSelected]}><Text style={styles.fileTitle}>{pdf ? pdf.name : 'PDF dosyası seçin'}</Text><Text style={styles.fileMeta}>{pdf ? `${((pdf.size ?? 0) / 1024 / 1024).toFixed(1)} MB` : 'Özel depolama · En fazla 50 MB'}</Text></Pressable>
+        {lookupMessage && <Text style={styles.lookupMessage}>{lookupBusy ? '⌛ ' : '✓ '}{lookupMessage}</Text>}
         <Field label="Başlık" value={title} onChangeText={setTitle} />
         <Field label="Patent numarası" value={patentNumber} onChangeText={setPatentNumber} placeholder="EP 3 821 947 A1" />
         <View style={styles.twoColumns}><Field compact label="Ülke kodu" value={countryCode} onChangeText={setCountryCode} placeholder="EP" /><Field compact label="Hak sahibi" value={assignee} onChangeText={setAssignee} /></View>
+        <Field label="Yayın tarihi (YYYY-AA-GG)" value={publicationDate} onChangeText={setPublicationDate} placeholder="2024-03-18" />
         <Field label="Kısa özet" value={summary} onChangeText={setSummary} multiline />
+        <Field label="Abstract" value={abstractText} onChangeText={setAbstractText} multiline />
         <Field label="Notlar" value={notes} onChangeText={setNotes} multiline />
       </Section>
       <Section title="02 · Uygulama"><ChoiceGrid items={categories} selected={categoryIds} setSelected={setCategoryIds} /></Section>
@@ -117,7 +144,7 @@ export default function NewPatentScreen() {
         <Text style={[styles.label, { marginTop: 18 }]}>Kimyasallar</Text><ChoiceGrid items={chemicals.map((item) => ({ id: item.id, name: item.abbreviation || item.canonical_name }))} selected={chemicalIds} setSelected={setChemicalIds} />
       </Section>
       <Section title="05 · Özel etiketler"><Field label="Virgülle ayırın" value={tags} onChangeText={setTags} placeholder="rakip, yüksek Tg, incelenecek" /></Section>
-      <Pressable disabled={saving} onPress={save} style={styles.saveButton}>{saving ? <ActivityIndicator color="#F7F9FF" /> : <Text style={styles.saveText}>PDF’yi yükle ve kaydet</Text>}</Pressable>
+      <Pressable disabled={saving || lookupBusy} onPress={save} style={[styles.saveButton, lookupBusy && { opacity: .5 }]}>{saving || lookupBusy ? <ActivityIndicator color="#F7F9FF" /> : <Text style={styles.saveText}>PDF’yi yükle ve kaydet</Text>}</Pressable>
     </ScrollView>
   );
 }
@@ -128,6 +155,10 @@ function ChoiceGrid({ items, selected, setSelected, single = false }: { items: N
   return <View style={styles.choiceGrid}>{items.map((item) => { const active = selected.includes(item.id); return <Pressable key={item.id} onPress={() => setSelected(single ? [item.id] : active ? selected.filter((id) => id !== item.id) : [...selected, item.id])} style={[styles.choice, active && styles.choiceActive]}><Text style={[styles.choiceText, active && styles.choiceTextActive]}>{active ? '✓ ' : ''}{item.name}</Text></Pressable>; })}</View>;
 }
 
+type PatentMetadata = { title: string | null; patent_number: string | null; country_code: string | null; publication_date: string | null; assignee: string | null; abstract: string | null };
+function normalizeNumber(value: string) { return value.toUpperCase().replace(/[^A-Z0-9]/g, ''); }
+function inferPatentNumber(filename: string) { const match = normalizeNumber(filename.replace(/\.pdf$/i, '')).match(/([A-Z]{2})(\d{4,})([A-Z]\d?)?/); return match ? { country: match[1], number: `${match[1]}${match[2]}${match[3] ?? ''}` } : null; }
+
 const styles = StyleSheet.create({
   content: { gap: 16, padding: 18, paddingBottom: 50, backgroundColor: palette.background },
   eyebrow: { marginTop: 8, color: palette.amber, fontSize: 10, letterSpacing: 1.5, fontWeight: '800' },
@@ -136,6 +167,7 @@ const styles = StyleSheet.create({
   sectionTitle: { marginBottom: 3, color: palette.text, fontSize: 18, fontWeight: '700' },
   fileButton: { minHeight: 88, justifyContent: 'center', padding: 16, borderWidth: 1, borderStyle: 'dashed', borderColor: palette.borderStrong, borderRadius: 16, backgroundColor: palette.surfaceMuted },
   fileSelected: { borderStyle: 'solid', borderColor: palette.blue, backgroundColor: palette.blueMuted }, fileTitle: { color: palette.text, fontSize: 14, fontWeight: '700' }, fileMeta: { marginTop: 5, color: palette.textMuted, fontSize: 11 },
+  lookupMessage: { padding: 11, borderRadius: 12, overflow: 'hidden', color: '#BAC8F3', backgroundColor: palette.blueMuted, fontSize: 10, lineHeight: 15 },
   field: { gap: 7 }, label: { color: '#B7BDC8', fontSize: 11, fontWeight: '700' }, input: { minHeight: 52, paddingHorizontal: 15, borderWidth: 1, borderColor: palette.border, borderRadius: 15, color: palette.text, backgroundColor: palette.surfaceMuted }, textarea: { minHeight: 96, paddingTop: 14, textAlignVertical: 'top' }, twoColumns: { flexDirection: 'row', gap: 10 },
   choiceGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 }, choice: { paddingHorizontal: 12, paddingVertical: 10, borderWidth: 1, borderColor: palette.border, borderRadius: 13, backgroundColor: palette.surfaceMuted }, choiceActive: { borderColor: palette.blue, backgroundColor: palette.blueMuted }, choiceText: { color: palette.textMuted, fontSize: 11, fontWeight: '600' }, choiceTextActive: { color: '#C8D5FF' },
   saveButton: { height: 56, alignItems: 'center', justifyContent: 'center', borderRadius: 17, backgroundColor: palette.blue }, saveText: { color: '#F7F9FF', fontSize: 14, fontWeight: '800' },

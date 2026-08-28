@@ -51,7 +51,7 @@ export function PatentEditor({ patent, signedPdfUrl, categories, purposes, mater
       <div className="detail-topbar"><Link href="/">← Kütüphaneye dön</Link><div>{signedPdfUrl && <a className="secondary-action" href={signedPdfUrl} target="_blank" rel="noreferrer">PDF’yi güvenli aç</a>}<button className="danger-action" disabled={busy} onClick={remove}>Sil</button></div></div>
       <div className="detail-hero"><span className="country-badge mint">{patent.country_code ?? '—'}</span><div><p className="eyebrow">{patent.patent_number ?? 'PATENT TASLAĞI'}</p><h1>{patent.title ?? 'Başlıksız patent'}</h1><p>{patent.assignee ?? 'Hak sahibi eklenmedi'} · {new Date(patent.uploaded_at).toLocaleDateString('tr-TR')}</p></div></div>
       <div className="detail-layout">
-        <form className="edit-card" onSubmit={save}><h2>Patent bilgileri</h2>{message && <p className={`form-message ${message.includes('kaydedildi') ? 'success' : 'error'}`}>{message}</p>}<div className="field-grid">
+        <form className="edit-card" id="manual-patent-editor" onSubmit={save}><h2>Patent bilgileri</h2>{message && <p className={`form-message ${message.includes('kaydedildi') ? 'success' : 'error'}`}>{message}</p>}<div className="field-grid">
           <label className="full">Başlık<input name="title" defaultValue={patent.title ?? ''} /></label>
           <label>Patent numarası<input name="patent_number" defaultValue={patent.patent_number ?? ''} /></label>
           <label>Ülke kodu<input name="country_code" defaultValue={patent.country_code ?? ''} maxLength={8} /></label>

@@ -12,13 +12,13 @@ Verification date: 28 August 2026 (Europe/Istanbul)
 - Expo dependency compatibility check: passed.
 - PostgreSQL pgTAP suite: 17/17 passed, including cross-user RLS and Storage isolation.
 - PostgreSQL schema lint: no warnings or errors.
-- Local mocked Edge Function E2E: analysis, structured suggestions, cross-user denial, human acceptance, and account deletion passed.
+- Local Edge Function E2E: free bibliographic lookup for US3684617A, transient-provider retry, strict structured analysis, duplicate/weak-evidence suppression, cross-user denial, human acceptance, and account deletion passed.
 
 ## Live Supabase verification
 
 - Dedicated project ref: `xuabyqeqheebplinbwmq` (technical project name: Patent Knowledge).
 - Seven local PostgreSQL migrations match the seven remote migrations.
-- `analyze-patent`, `review-ai-suggestion`, and `delete-account` are active and require JWT authentication.
+- `analyze-patent`, `lookup-patent-metadata`, `review-ai-suggestion`, and `delete-account` are active and require JWT authentication.
 - A temporary second user could not read the demo patent or obtain a signed URL for its PDF; the user was deleted after the test.
 - Supabase performance advisors report no unindexed foreign keys. The remaining performance notices are expected unused-index telemetry for this new, low-traffic project.
 - The only security-advisor warning is leaked-password protection, which Supabase documents as Pro-only; it remains off to preserve the requested free plan. Eight-character alphanumeric minimums and refresh-token rotation are enabled.

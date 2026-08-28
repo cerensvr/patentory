@@ -2,6 +2,8 @@
 
 Supabase-first patent knowledge manager for chemistry and materials R&D. Patentory uses the same private patent library in its Next.js web app and Expo Android app. The manual workflow works without AI.
 
+Live web application: [patentory.vercel.app](https://patentory.vercel.app)
+
 ## Implemented MVP foundation
 
 - Email/password authentication with Supabase Auth
@@ -73,7 +75,7 @@ npx eas-cli init
 npx eas-cli build --platform android --profile production
 ```
 
-The production profile creates an Android App Bundle (`.aab`) with remote auto-incremented version codes. The EAS project, remote Play signing keystore, account-deletion flow, and custom graphite/steel-blue launcher artwork are configured. Before Play Console submission, set `EXPO_PUBLIC_PRIVACY_URL` to the final hosted web privacy page and complete the store listing, Data Safety answers, production SMTP, and tester track.
+The production profile creates an Android App Bundle (`.aab`) with remote auto-incremented version codes. The EAS project, remote Play signing keystore, account-deletion flow, custom graphite/steel-blue launcher artwork, and `EXPO_PUBLIC_PRIVACY_URL=https://patentory.vercel.app/privacy` are configured. Before Play Console submission, complete the legal/support contact details, store listing, Data Safety answers, production SMTP, and tester track.
 
 ## Supabase project
 

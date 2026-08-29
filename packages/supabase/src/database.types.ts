@@ -232,6 +232,132 @@ export type Database = {
           },
         ]
       }
+      ai_learning_feedback: {
+        Row: {
+          correction_note: string | null
+          created_at: string
+          decision: string
+          evidence_page: number | null
+          evidence_quote: string | null
+          id: string
+          matched_category_id: string | null
+          matched_chemical_id: string | null
+          matched_commercial_product_id: string | null
+          matched_purpose_id: string | null
+          matched_role_id: string | null
+          normalized_observed_label: string
+          observed_label: string
+          owner_user_id: string
+          resolved_label: string | null
+          source_patent_id: string | null
+          source_run_id: string | null
+          source_suggestion_id: string | null
+          suggestion_type: string
+          updated_at: string
+        }
+        Insert: {
+          correction_note?: string | null
+          created_at?: string
+          decision: string
+          evidence_page?: number | null
+          evidence_quote?: string | null
+          id?: string
+          matched_category_id?: string | null
+          matched_chemical_id?: string | null
+          matched_commercial_product_id?: string | null
+          matched_purpose_id?: string | null
+          matched_role_id?: string | null
+          normalized_observed_label: string
+          observed_label: string
+          owner_user_id: string
+          resolved_label?: string | null
+          source_patent_id?: string | null
+          source_run_id?: string | null
+          source_suggestion_id?: string | null
+          suggestion_type: string
+          updated_at?: string
+        }
+        Update: {
+          correction_note?: string | null
+          created_at?: string
+          decision?: string
+          evidence_page?: number | null
+          evidence_quote?: string | null
+          id?: string
+          matched_category_id?: string | null
+          matched_chemical_id?: string | null
+          matched_commercial_product_id?: string | null
+          matched_purpose_id?: string | null
+          matched_role_id?: string | null
+          normalized_observed_label?: string
+          observed_label?: string
+          owner_user_id?: string
+          resolved_label?: string | null
+          source_patent_id?: string | null
+          source_run_id?: string | null
+          source_suggestion_id?: string | null
+          suggestion_type?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_learning_feedback_matched_category_id_fkey"
+            columns: ["matched_category_id"]
+            isOneToOne: false
+            referencedRelation: "application_categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_learning_feedback_matched_chemical_id_fkey"
+            columns: ["matched_chemical_id"]
+            isOneToOne: false
+            referencedRelation: "chemicals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_learning_feedback_matched_commercial_product_id_fkey"
+            columns: ["matched_commercial_product_id"]
+            isOneToOne: false
+            referencedRelation: "commercial_products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_learning_feedback_matched_purpose_id_fkey"
+            columns: ["matched_purpose_id"]
+            isOneToOne: false
+            referencedRelation: "technical_purposes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_learning_feedback_matched_role_id_fkey"
+            columns: ["matched_role_id"]
+            isOneToOne: false
+            referencedRelation: "chemical_roles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_learning_feedback_source_patent_id_fkey"
+            columns: ["source_patent_id"]
+            isOneToOne: false
+            referencedRelation: "patents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_learning_feedback_source_run_id_fkey"
+            columns: ["source_run_id"]
+            isOneToOne: false
+            referencedRelation: "ai_analysis_runs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_learning_feedback_source_suggestion_id_fkey"
+            columns: ["source_suggestion_id"]
+            isOneToOne: false
+            referencedRelation: "ai_analysis_suggestions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       application_categories: {
         Row: {
           created_at: string

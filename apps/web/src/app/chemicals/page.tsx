@@ -27,7 +27,22 @@ export default async function ChemicalsPage({ searchParams }: PageProps) {
       {params.error && <p className="form-message error">{params.error}</p>}{params.message && <p className="form-message success">{params.message}</p>}
       <section className="catalog-explainer"><div><small>KANONİK</small><strong>Isophorone diamine</strong></div><span>≠</span><div><small>SİNONİM</small><strong>Isophoronediamine</strong></div><span>≠</span><div><small>TİCARİ ÜRÜN</small><strong>VESTAMIN IPD</strong></div></section>
       <div className="catalog-layout">
-        <section className="catalog-list"><div className="catalog-title"><h2>Kimyasal kayıtları</h2><span>{chemicals.length} kayıt</span></div><div className="catalog-grid">{chemicals.map((chemical) => <article key={chemical.id}><div className="catalog-card-top"><span>{chemical.abbreviation || '—'}</span>{chemical.owner_user_id && <em>Size özel</em>}</div><h3>{chemical.canonical_name}</h3><p>{chemical.chemical_class ?? 'Sınıf eklenmedi'}{chemical.cas_number ? ` · CAS ${chemical.cas_number}` : ''}</p>{chemical.molecular_formula && <code>{chemical.molecular_formula}</code>}<div>{chemical.chemical_synonyms.map((item) => <small key={item.synonym}>{item.synonym}</small>)}</div></article>)}</div></section>
+        <section className="catalog-list">
+          <div className="catalog-title"><h2>Kimyasal kayıtları</h2><span>{chemicals.length} kayıt</span></div>
+          <div className="catalog-grid">{chemicals.map((chemical) => {
+            const synonyms = chemical.chemical_synonyms ?? [];
+            return <article key={chemical.id}>
+              <div className="catalog-card-top"><span>{chemical.abbreviation || '—'}</span>{chemical.owner_user_id && <em>Size özel</em>}</div>
+              <h3>{chemical.canonical_name}</h3>
+              <p>{chemical.chemical_class ?? 'Sınıf eklenmedi'}{chemical.cas_number ? ` · CAS ${chemical.cas_number}` : ''}</p>
+              {chemical.molecular_formula && <code>{chemical.molecular_formula}</code>}
+              <div className="synonym-chips">
+                {synonyms.slice(0, 4).map((item) => <small key={item.synonym}>{item.synonym}</small>)}
+                {synonyms.length > 4 && <details className="synonym-more"><summary>+{synonyms.length - 4} eş anlamlı</summary><div>{synonyms.slice(4).map((item) => <small key={item.synonym}>{item.synonym}</small>)}</div></details>}
+              </div>
+            </article>;
+          })}</div>
+        </section>
         <aside className="catalog-form"><h2>Kimyasal ekle</h2><form action={createChemical} className="compact-form"><label>Kanonik ad<input required name="canonical_name" /></label><div className="field-grid"><label>Kısaltma<input name="abbreviation" /></label><label>CAS numarası<input name="cas_number" /></label><label>Moleküler formül<input name="molecular_formula" /></label><label>Kimyasal sınıf<input name="chemical_class" /></label></div><label>Sinonimler<input name="synonyms" placeholder="Virgülle ayırın" /></label><label>Not<textarea name="notes" rows={3} /></label><button className="primary-action">Kimyasalı kaydet</button></form></aside>
       </div>
       <div className="catalog-layout products-layout">

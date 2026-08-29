@@ -4,7 +4,7 @@
 
 - Web and Android clients are untrusted. They receive only the project URL and publishable key.
 - PostgreSQL grants decide which objects are reachable through the Data API; RLS decides which rows the signed-in user may access.
-- Supabase secret/service-role keys and OpenAI credentials exist only in Edge Function secrets.
+- Supabase secret/service-role keys and Gemini/OpenAI credentials exist only in Edge Function secrets.
 - PDF files are private objects. The database stores an object path, never a public URL.
 
 ## Required invariants
@@ -18,13 +18,13 @@
 7. Privileged functions are not placed in the exposed schema. Exposed search functions are security invoker and execute-granted only to `authenticated`.
 8. AI output is stored as suggestions and never overwrites user-confirmed data automatically.
 9. AI suggestion tables are read-only to clients; review mutations run in a JWT-verified Edge Function that checks the duplicated owner field against the authenticated user.
-10. OpenAI requests use `store: false`, short-lived signed input URLs, strict structured output, and explicit prompt-injection resistance.
+10. Gemini requests originate only in the Edge Function, use strict structured output, and include explicit prompt-injection resistance.
 
 ## Before a production release
 
 - Run migration reset, pgTAP RLS tests, database lint, and Supabase security/performance advisors.
 - Verify email confirmation, a production SMTP provider, redirect allow-lists, CAPTCHA, and rate limits.
-- Confirm no `.env`, service-role key, OpenAI key, signing file, or Google service credential is committed or bundled.
+- Confirm no `.env`, service-role key, AI provider key, signing file, or Google service credential is committed or bundled.
 - Test two real accounts against guessed patent IDs and guessed Storage paths.
 - Set Storage file-size/MIME limits and validate PDF magic bytes before analysis.
 - Confirm Android's permanent application ID and remote Play signing key, host the privacy policy, and complete the Data Safety disclosure.

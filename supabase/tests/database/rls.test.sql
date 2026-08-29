@@ -2,7 +2,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(17);
+select plan(20);
 
 insert into auth.users (
   id, instance_id, aud, role, email, encrypted_password,
@@ -101,6 +101,27 @@ insert into public.ai_analysis_suggestions (
     '10000000-0000-4000-8000-000000000001', 0.91
   );
 
+insert into public.ai_learning_feedback (
+  id, owner_user_id, source_suggestion_id, source_run_id, source_patent_id,
+  suggestion_type, observed_label, normalized_observed_label, decision, resolved_label
+) values
+  (
+    '77000000-0000-4000-8000-000000000001',
+    '70000000-0000-4000-8000-000000000001',
+    '76000000-0000-4000-8000-000000000001',
+    '75000000-0000-4000-8000-000000000001',
+    '71000000-0000-4000-8000-000000000001',
+    'CHEMICAL', 'IPDA', 'ipda', 'ACCEPTED', 'Isophorone diamine'
+  ),
+  (
+    '77000000-0000-4000-8000-000000000002',
+    '70000000-0000-4000-8000-000000000002',
+    '76000000-0000-4000-8000-000000000002',
+    '75000000-0000-4000-8000-000000000002',
+    '71000000-0000-4000-8000-000000000002',
+    'CHEMICAL', 'DGEBA', 'dgeba', 'CORRECTED', 'Bisphenol A diglycidyl ether'
+  );
+
 set local role authenticated;
 select set_config(
   'request.jwt.claims',
@@ -129,7 +150,7 @@ where id = '71000000-0000-4000-8000-000000000002';
 
 select is(
   (select count(*)::integer from public.chemicals),
-  8,
+  (select count(*)::integer + 1 from public.chemicals where owner_user_id is null),
   'user one sees shared chemicals plus their private chemical'
 );
 
@@ -149,6 +170,19 @@ select is(
   (select count(*)::integer from public.ai_analysis_suggestions),
   1,
   'user one sees only their own AI suggestions'
+);
+
+select is(
+  (select count(*)::integer from public.ai_learning_feedback),
+  1,
+  'user one sees only their own AI learning memory'
+);
+
+select throws_ok(
+  $$ update public.ai_learning_feedback set resolved_label = 'tampered' where id = '77000000-0000-4000-8000-000000000001' $$,
+  '42501',
+  'permission denied for table ai_learning_feedback',
+  'clients cannot directly alter AI learning memory'
 );
 
 select throws_ok(
@@ -200,7 +234,7 @@ select is(
 
 select is(
   (select count(*)::integer from public.chemicals),
-  7,
+  (select count(*)::integer from public.chemicals where owner_user_id is null),
   'user two cannot see user one private chemical'
 );
 
@@ -220,6 +254,12 @@ select is(
   (select count(*)::integer from public.ai_analysis_suggestions),
   1,
   'user two sees only their own AI suggestions'
+);
+
+select is(
+  (select count(*)::integer from public.ai_learning_feedback),
+  1,
+  'user two cannot see user one AI learning memory'
 );
 
 select is(

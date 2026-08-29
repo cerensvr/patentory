@@ -57,7 +57,7 @@ export function PatentEditor({ patent, signedPdfUrl, categories, purposes, mater
           <label>Ülke kodu<input name="country_code" defaultValue={patent.country_code ?? ''} maxLength={8} /></label>
           <label>Yayın tarihi<input name="publication_date" type="date" defaultValue={patent.publication_date ?? ''} /></label>
           <label>Hak sahibi<input name="assignee" defaultValue={patent.assignee ?? ''} /></label>
-          <label className="full">Kısa özet<textarea name="user_summary" rows={4} defaultValue={patent.user_summary ?? ''} /></label>
+          <label className="full">Türkçe abstract / özet<textarea name="user_summary" rows={4} defaultValue={patent.user_summary ?? ''} /></label>
           <label className="full">Notlar<textarea name="notes" rows={5} defaultValue={patent.notes ?? ''} /></label>
           <label className="check-row"><input type="checkbox" name="favorite" defaultChecked={patent.favorite} /> Favori</label>
           <label className="check-row"><input type="checkbox" name="archived" defaultChecked={patent.archived} /> Arşivlendi</label>

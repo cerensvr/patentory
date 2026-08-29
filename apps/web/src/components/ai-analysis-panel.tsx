@@ -9,13 +9,25 @@ import { createClient } from '@/lib/supabase/client';
 type Run = Database['public']['Tables']['ai_analysis_runs']['Row'];
 type Suggestion = Database['public']['Tables']['ai_analysis_suggestions']['Row'];
 type PerformanceMetric = { name: string; value: string; unit: string | null; context: string; page: number | null };
+type PatentExample = {
+  example_number: string;
+  summary: string;
+  chemicals: string[];
+  conditions: string[];
+  composition?: Array<{ component: string; amount: string | null; unit: string | null; basis: string | null; role: string | null; page: number | null }>;
+  production_steps?: Array<{ step_number: string; instruction: string; conditions: string[]; page: number | null }>;
+  test_results?: Array<{ test_name: string; method: string | null; result: string; unit: string | null; specimen: string | null; page: number | null }>;
+  outcome: string;
+  page: number | null;
+};
 
 type AnalysisResult = {
+  patent_metadata?: { abstract?: string | null };
   document_language?: string;
   independent_claims?: Array<{ claim_number: string; summary: string; evidence_quote: string; page: number | null }>;
   process_steps?: string[];
   performance_metrics?: PerformanceMetric[];
-  examples?: Array<{ example_number: string; summary: string; chemicals: string[]; conditions: string[]; outcome: string; page: number | null }>;
+  examples?: PatentExample[];
   warnings?: string[];
 };
 
@@ -35,8 +47,11 @@ export function AiAnalysisPanel({ patentId, hasPdf, initialRun, initialSuggestio
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [reviewingId, setReviewingId] = useState<string>();
+  const [correctingId, setCorrectingId] = useState<string>();
+  const [correctionText, setCorrectionText] = useState('');
   const [message, setMessage] = useState<string>();
   const [error, setError] = useState<string>();
+  const [allowGeminiFallback, setAllowGeminiFallback] = useState(true);
   const analysis = useMemo(() => asAnalysis(initialRun?.result_json), [initialRun?.result_json]);
   const processing = busy || initialRun?.status === 'QUEUED' || initialRun?.status === 'PROCESSING';
 
@@ -51,7 +66,7 @@ export function AiAnalysisPanel({ patentId, hasPdf, initialRun, initialSuggestio
     setError(undefined);
     setMessage('PDF yüksek ayrıntıyla inceleniyor. Bu işlem belgenin uzunluğuna göre birkaç dakika sürebilir.');
     const { data, error: invokeError } = await createClient().functions.invoke('analyze-patent', {
-      body: { patentId },
+      body: { patentId, preferGemini: true, allowGeminiFallback, allowOpenAiFallback: false },
     });
     setBusy(false);
     if (invokeError) {
@@ -66,45 +81,66 @@ export function AiAnalysisPanel({ patentId, hasPdf, initialRun, initialSuggestio
       setMessage(undefined);
       return;
     }
+    const provider = data?.provider === 'gemini' ? 'Gemini' : 'OpenAI';
     setMessage(data?.status === 'REVIEW_REQUIRED'
-      ? 'Tarama tamamlandı. Bulguları doğrulayıp kütüphaneye ekleyebilirsiniz.'
-      : 'Tarama tamamlandı.');
+      ? `${provider} ile tarama tamamlandı. Bulguları doğrulayıp kütüphaneye ekleyebilirsiniz.`
+      : `${provider} ile tarama tamamlandı.`);
     router.refresh();
   }
 
-  async function review(suggestion: Suggestion, decision: 'ACCEPTED' | 'REJECTED') {
+  async function review(suggestion: Suggestion, decision: 'ACCEPTED' | 'REJECTED', correction?: string) {
     setReviewingId(suggestion.id);
     setError(undefined);
     const { data, error: reviewError } = await createClient().functions.invoke('review-ai-suggestion', {
-      body: { suggestionId: suggestion.id, decision },
+      body: { suggestionId: suggestion.id, decision, correction: correction?.trim() || undefined },
     });
     setReviewingId(undefined);
     if (reviewError || data?.error) setError(String(data?.error ?? reviewError?.message));
-    else router.refresh();
+    else {
+      setCorrectingId(undefined);
+      setCorrectionText('');
+      setMessage(decision === 'ACCEPTED'
+        ? 'Onayınız kaydedildi; benzer ifadeler sonraki taramalarda daha doğru eşleştirilecek.'
+        : correction?.trim()
+          ? `“${suggestion.label}” için düzeltmeniz öğrenildi.`
+          : 'Öneri yanlış olarak kaydedildi ve sonraki taramalarda dikkate alınacak.');
+      router.refresh();
+    }
+  }
+
+  function askForCorrection(suggestionId: string) {
+    setCorrectingId(suggestionId);
+    setCorrectionText('');
+    setError(undefined);
   }
 
   return (
     <section className="ai-workbench">
       <div className="ai-heading">
         <div>
-          <p className="eyebrow">KANITA DAYALI İNCELEME</p>
-          <h2>AI patent taraması</h2>
+          <p className="eyebrow">AKILLI DOKÜMAN ANALİZİ</p>
+          <h2>Patent taraması</h2>
           <p>PDF; istemler, kimyasallar, ticari ürünler, örnekler ve performans verileri için incelenir. Hiçbir öneri onayınız olmadan kütüphaneye eklenmez.</p>
         </div>
         <div className="ai-actions">
           <span className={`analysis-status status-${(initialRun?.status ?? 'NOT_ANALYZED').toLowerCase()}`}>
-            {statusLabel(initialRun?.status)}
+            {statusLabel(initialRun?.status, initialRun?.error_code)}
           </span>
           <button className="primary-action" disabled={!hasPdf || processing} onClick={analyze} type="button">
-            {processing ? 'PDF inceleniyor…' : initialRun ? 'Yeniden tara' : 'AI taramasını başlat'}
+            {processing ? 'PDF inceleniyor…' : initialRun ? 'Yeniden tara' : 'Patent taramasını başlat'}
           </button>
         </div>
       </div>
 
+      <label className="ai-fallback-option">
+        <input checked={allowGeminiFallback} disabled={processing} onChange={(event) => setAllowGeminiFallback(event.target.checked)} type="checkbox" />
+        <span><strong>Gemini 3.7 kotası dolarsa Flash‑Lite ile devam et</strong><small>3.7 Flash günlük 20 güçlü tarama sağlar; Flash‑Lite yedeği günlük 500 ek tarama sunar. Ücretsiz Gemini’ye gönderilen yayımlanmış patent içeriği Google tarafından ürün geliştirmede kullanılabilir.</small></span>
+      </label>
+
       {!hasPdf && <p className="form-message error">Tarama için bu kayda önce özel bir PDF yükleyin.</p>}
       {message && <p className="form-message success">{message}</p>}
       {error && <p className="form-message error">{error}</p>}
-      {initialRun?.status === 'FAILED' && initialRun.error_message && (
+      {!error && initialRun?.status === 'FAILED' && initialRun.error_message && (
         <p className="form-message error">Son tarama tamamlanamadı: {initialRun.error_message} <a href="#manual-patent-editor">Bilgileri manuel düzenleyin.</a></p>
       )}
 
@@ -115,8 +151,11 @@ export function AiAnalysisPanel({ patentId, hasPdf, initialRun, initialSuggestio
             <QualityMetric label="Yüksek güven" value={String(initialSuggestions.filter((item) => Number(item.confidence_score ?? 0) >= .85).length)} />
             <QualityMetric label="Belge dili" value={analysis?.document_language || '—'} />
             <QualityMetric label="Uyarı" value={String(analysis?.warnings?.length ?? 0)} />
+            <QualityMetric label="Kullanılan model" value={providerLabel(initialRun.model)} />
+            <QualityMetric label="Ücretli karşılığı" value={estimatedPaidCostTry(initialRun)} />
           </div>
           <ReportSection title="Yönetici özeti" text={initialRun.executive_summary} />
+          <ReportSection title="Türkçe abstract" text={analysis?.patent_metadata?.abstract ?? null} />
           <div className="analysis-columns">
             <ReportSection title="Teknik problem" text={initialRun.technical_problem} />
             <ReportSection title="Önerilen çözüm" text={initialRun.proposed_solution} />
@@ -137,19 +176,7 @@ export function AiAnalysisPanel({ patentId, hasPdf, initialRun, initialSuggestio
               ))}</div>
             </details>
           )}
-          {!!analysis?.examples?.length && (
-            <details className="analysis-details">
-              <summary>Deneyler ve örnekler <span>{analysis.examples.length}</span></summary>
-              <div>{analysis.examples.map((example) => (
-                <article key={`${example.example_number}-${example.page}`}>
-                  <strong>{example.example_number}</strong><p>{example.summary}</p>
-                  {!!example.chemicals.length && <small>{example.chemicals.join(' · ')}</small>}
-                  {!!example.conditions.length && <small>{example.conditions.join(' · ')}</small>}
-                  <p>{example.outcome}</p>{example.page && <em>PDF s. {example.page}</em>}
-                </article>
-              ))}</div>
-            </details>
-          )}
+          {!!analysis?.examples?.length && <ExampleTables examples={analysis.examples} />}
           {!!analysis?.process_steps?.length && (
             <details className="analysis-details">
               <summary>Proses adımları <span>{analysis.process_steps.length}</span></summary>
@@ -165,7 +192,7 @@ export function AiAnalysisPanel({ patentId, hasPdf, initialRun, initialSuggestio
 
       {!!initialSuggestions.length && (
         <div className="suggestion-review">
-          <div className="suggestion-title"><div><p className="eyebrow">İNSAN ONAYI</p><h3>Yapılandırılmış öneriler</h3></div><span>{initialSuggestions.filter((item) => item.review_status === 'PENDING').length} bekliyor</span></div>
+          <div className="suggestion-title"><div><p className="eyebrow">BULGULARI DOĞRULA</p><h3>Yapılandırılmış öneriler</h3></div><span>{initialSuggestions.filter((item) => item.review_status === 'PENDING').length} bekliyor</span></div>
           <div className="suggestion-grid">
             {initialSuggestions.map((suggestion) => {
               const canAccept = canAcceptSuggestion(suggestion);
@@ -177,10 +204,31 @@ export function AiAnalysisPanel({ patentId, hasPdf, initialRun, initialSuggestio
                   {suggestion.normalized_value && suggestion.normalized_value !== suggestion.label && <p className="normalized-value">Kanonik aday: {suggestion.normalized_value}</p>}
                   <Evidence quote={suggestion.evidence_quote} page={suggestion.evidence_page} />
                   {suggestion.review_status === 'PENDING' ? (
-                    <div className="review-actions">
-                      <button disabled={!canAccept || reviewingId === suggestion.id} onClick={() => review(suggestion, 'ACCEPTED')} type="button">Onayla ve ekle</button>
-                      <button disabled={reviewingId === suggestion.id} onClick={() => review(suggestion, 'REJECTED')} type="button">Reddet</button>
-                    </div>
+                    <>
+                      <div className="review-actions">
+                        <button disabled={!canAccept || reviewingId === suggestion.id} onClick={() => review(suggestion, 'ACCEPTED')} type="button">Onayla ve ekle</button>
+                        <button disabled={reviewingId === suggestion.id} onClick={() => askForCorrection(suggestion.id)} type="button">Yanlış / düzelt</button>
+                      </div>
+                      {correctingId === suggestion.id && (
+                        <div className="learning-correction">
+                          <label htmlFor={`correction-${suggestion.id}`}>Bu ifade neyi anlatıyor?</label>
+                          <input
+                            autoFocus
+                            id={`correction-${suggestion.id}`}
+                            maxLength={500}
+                            onChange={(event) => setCorrectionText(event.target.value)}
+                            placeholder="Doğru kimyasal, ticari ürün, kategori veya teknik amacı yazın"
+                            value={correctionText}
+                          />
+                          <small>Düzeltmeniz yalnızca size ait öğrenme hafızasına kaydedilir; kimyasal kataloğu değiştirmez.</small>
+                          <div>
+                            <button disabled={!correctionText.trim() || reviewingId === suggestion.id} onClick={() => review(suggestion, 'REJECTED', correctionText)} type="button">Düzeltmeyi öğret</button>
+                            <button disabled={reviewingId === suggestion.id} onClick={() => review(suggestion, 'REJECTED')} type="button">Sadece yanlış</button>
+                            <button disabled={reviewingId === suggestion.id} onClick={() => { setCorrectingId(undefined); setCorrectionText(''); }} type="button">Vazgeç</button>
+                          </div>
+                        </div>
+                      )}
+                    </>
                   ) : <p className="reviewed-label">{suggestion.review_status === 'ACCEPTED' ? 'Onaylandı ve işlendi' : 'Reddedildi'}</p>}
                   {!canAccept && suggestion.review_status === 'PENDING' && <small className="catalog-warning">Katalog eşleşmesi yok; önce katalog kaydı oluşturun veya öneriyi reddedin.</small>}
                 </article>
@@ -190,7 +238,7 @@ export function AiAnalysisPanel({ patentId, hasPdf, initialRun, initialSuggestio
         </div>
       )}
 
-      <footer className="ai-disclaimer">AI çıktıları inceleme desteğidir; hukuki görüş değildir. Manuel kayıt ve filtreleme AI servisi kapalıyken de çalışır.</footer>
+      <footer className="ai-disclaimer">Analiz sonuçlarını kütüphaneye işlemeden önce kaynak sayfasıyla doğrulayın.</footer>
     </section>
   );
 }
@@ -211,6 +259,78 @@ function ReportList({ title, values }: { title: string; values: string[] }) {
 function Evidence({ quote, page }: { quote: string | null; page: number | null }) {
   if (!quote && !page) return null;
   return <blockquote>{quote && <span>“{quote}”</span>}{page && <cite>PDF s. {page}</cite>}</blockquote>;
+}
+
+function ExampleTables({ examples }: { examples: PatentExample[] }) {
+  const compositionRows = examples.flatMap((example) => (example.composition ?? []).map((row) => ({ example: example.example_number, ...row })));
+  const productionRows = examples.flatMap((example) => (example.production_steps ?? []).map((row) => ({ example: example.example_number, ...row })));
+  const testRows = examples.flatMap((example) => (example.test_results ?? []).map((row) => ({ example: example.example_number, ...row })));
+
+  return (
+    <section className="example-report">
+      <div className="performance-heading"><div><small>YAPILANDIRILMIŞ DENEY RAPORU</small><h3>Örnek ve sonuç tabloları</h3></div><span>{examples.length} örnek</span></div>
+      <AnalysisTable
+        caption="Örnek özeti"
+        headers={['Örnek', 'Türkçe özet', 'Koşullar', 'Sonuç', 'Sayfa']}
+        rows={examples.map((example) => [
+          example.example_number,
+          example.summary,
+          example.conditions?.join(' · ') || '—',
+          example.outcome || '—',
+          pageLabel(example.page),
+        ])}
+      />
+      {!!compositionRows.length && <AnalysisTable
+        caption="İçerik / formülasyon tablosu"
+        headers={['Örnek', 'Bileşen', 'Miktar', 'Baz', 'Rol', 'Sayfa']}
+        rows={compositionRows.map((row) => [
+          row.example,
+          row.component,
+          [row.amount, row.unit].filter(Boolean).join(' ') || '—',
+          row.basis || '—',
+          row.role || '—',
+          pageLabel(row.page),
+        ])}
+      />}
+      {!!productionRows.length && <AnalysisTable
+        caption="Örneklerin üretim aşamaları"
+        headers={['Örnek', 'Adım', 'Türkçe üretim talimatı', 'Koşullar', 'Sayfa']}
+        rows={productionRows.map((row) => [row.example, row.step_number, row.instruction, row.conditions.join(' · ') || '—', pageLabel(row.page)])}
+      />}
+      {!!testRows.length && <AnalysisTable
+        caption="Test sonuçları"
+        headers={['Örnek', 'Test / metot', 'Sonuç', 'Numune', 'Sayfa']}
+        rows={testRows.map((row) => [
+          row.example,
+          [row.test_name, row.method].filter(Boolean).join(' · '),
+          `${row.result}${row.unit ? ` ${row.unit}` : ''}`,
+          row.specimen || '—',
+          pageLabel(row.page),
+        ])}
+      />}
+      {!compositionRows.length && !productionRows.length && !testRows.length && (
+        <p className="performance-empty">Bu analiz eski biçimde kaydedilmiş. Ayrıntılı içerik, üretim ve test tabloları için PDF’yi yeniden tarayın.</p>
+      )}
+    </section>
+  );
+}
+
+function AnalysisTable({ caption, headers, rows }: { caption: string; headers: string[]; rows: string[][] }) {
+  return (
+    <div className="analysis-table-block">
+      <h4>{caption}<span>{rows.length} satır</span></h4>
+      <div className="analysis-table-wrap">
+        <table className="analysis-table">
+          <thead><tr>{headers.map((header) => <th key={header}>{header}</th>)}</tr></thead>
+          <tbody>{rows.map((row, rowIndex) => <tr key={`${caption}-${rowIndex}`}>{row.map((cell, cellIndex) => <td key={`${rowIndex}-${cellIndex}`}>{cell}</td>)}</tr>)}</tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function pageLabel(page: number | null) {
+  return page ? `PDF s. ${page}` : '—';
 }
 
 function PerformanceCharts({ metrics }: { metrics: PerformanceMetric[] }) {
@@ -259,11 +379,39 @@ function asAnalysis(value: Json | null | undefined): AnalysisResult | null {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as AnalysisResult : null;
 }
 
-function statusLabel(status?: string) {
+function statusLabel(status?: string, errorCode?: string | null) {
+  if (status === 'FAILED' && isQuotaCode(errorCode)) return 'Kota doldu';
   return ({
     QUEUED: 'Sırada', PROCESSING: 'İnceleniyor', REVIEW_REQUIRED: 'Onay bekliyor',
     COMPLETED: 'Tamamlandı', FAILED: 'Başarısız',
   } as Record<string, string>)[status ?? ''] ?? 'Henüz taranmadı';
+}
+
+function isQuotaCode(code?: string | null) {
+  return ['insufficient_quota', 'credit_balance_exhausted', 'billing_hard_limit_reached', 'organization_usage_limit_exceeded', 'organization_spend_limit_exceeded', 'project_spend_limit_exceeded', 'rate_limit_exceeded', 'RESOURCE_EXHAUSTED', '429'].includes(code ?? '');
+}
+
+function providerLabel(model?: string | null) {
+  if (!model) return '—';
+  if (model.startsWith('gemini:')) return `Gemini · ${model.slice(7)}`;
+  if (model.startsWith('openai:')) return `OpenAI · ${model.slice(7)}`;
+  return model;
+}
+
+function estimatedPaidCostTry(run: Run) {
+  const input = run.input_tokens ?? 0;
+  const output = run.output_tokens ?? 0;
+  if (!input && !output) return '—';
+  const model = run.model ?? '';
+  const prices = model.includes('gemini-3.7-flash') ? [.75, 3.75]
+    : model.includes('gemini-3.5-flash-lite') ? [.30, 2.50]
+    : model.includes('gpt-5.6-luna') ? [.20, 1.20]
+    : model.includes('gpt-5.6-terra') ? [2, 12]
+    : model.includes('gpt-5.6') ? [4, 20]
+    : null;
+  if (!prices) return '—';
+  const usd = (input * prices[0] + output * prices[1]) / 1_000_000;
+  return `≈ ₺${(usd * 48.16).toFixed(2)}`;
 }
 
 function canAcceptSuggestion(item: Suggestion) {

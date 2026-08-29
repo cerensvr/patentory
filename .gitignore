@@ -14,6 +14,7 @@ apps/web/node_modules/
 apps/mobile/.expo/
 apps/mobile/node_modules/
 apps/mobile/dist/
+apps/mobile/dist-android/
 apps/mobile/android/
 supabase/.branches/
 supabase/.temp/

@@ -9,7 +9,11 @@ import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/providers/auth-provider';
 
 type Named = { id: string; name: string };
-type Chemical = { id: string; canonical_name: string; abbreviation: string | null };
+type Chemical = { id: string; canonical_name: string; abbreviation: string | null; cas_number: string | null; chemical_class: string | null };
+type CommercialProduct = { id: string; trade_name: string; manufacturer: string | null; product_type: string | null };
+type LookupChemical = { chemical_id: string; role_id: string | null; confidence: number; evidence: string };
+type LookupProduct = { commercial_product_id: string; role_id: string | null; confidence: number; evidence: string };
+type LookupSuggestions = { category_ids: string[]; purpose_ids: string[]; chemicals: LookupChemical[]; commercial_products?: LookupProduct[] };
 
 export default function NewPatentScreen() {
   const router = useRouter();
@@ -27,11 +31,19 @@ export default function NewPatentScreen() {
   const [categories, setCategories] = useState<Named[]>([]);
   const [purposes, setPurposes] = useState<Named[]>([]);
   const [chemicals, setChemicals] = useState<Chemical[]>([]);
+  const [commercialProducts, setCommercialProducts] = useState<CommercialProduct[]>([]);
   const [roles, setRoles] = useState<Named[]>([]);
   const [categoryIds, setCategoryIds] = useState<string[]>([]);
   const [purposeIds, setPurposeIds] = useState<string[]>([]);
   const [chemicalIds, setChemicalIds] = useState<string[]>([]);
-  const [roleId, setRoleId] = useState('');
+  const [chemicalQuery, setChemicalQuery] = useState('');
+  const [roleByChemical, setRoleByChemical] = useState<Record<string, string>>({});
+  const [productIds, setProductIds] = useState<string[]>([]);
+  const [roleByProduct, setRoleByProduct] = useState<Record<string, string>>({});
+  const [suggestedCategoryIds, setSuggestedCategoryIds] = useState<string[]>([]);
+  const [suggestedPurposeIds, setSuggestedPurposeIds] = useState<string[]>([]);
+  const [suggestedChemicalIds, setSuggestedChemicalIds] = useState<string[]>([]);
+  const [suggestedProductIds, setSuggestedProductIds] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [lookupBusy, setLookupBusy] = useState(false);
   const [lookupMessage, setLookupMessage] = useState<string>();
@@ -40,15 +52,18 @@ export default function NewPatentScreen() {
     Promise.all([
       supabase.from('application_categories').select('id,name').order('name'),
       supabase.from('technical_purposes').select('id,name').order('name'),
-      supabase.from('chemicals').select('id,canonical_name,abbreviation').order('canonical_name'),
+      supabase.from('chemicals').select('id,canonical_name,abbreviation,cas_number,chemical_class').order('canonical_name'),
+      supabase.from('commercial_products').select('id,trade_name,manufacturer,product_type').order('trade_name'),
       supabase.from('chemical_roles').select('id,name').order('name'),
-    ]).then(([categoryResult, purposeResult, chemicalResult, roleResult]) => {
+    ]).then(([categoryResult, purposeResult, chemicalResult, productResult, roleResult]) => {
       setCategories(categoryResult.data ?? []);
       setPurposes(purposeResult.data ?? []);
       setChemicals(chemicalResult.data ?? []);
+      setCommercialProducts(productResult.data ?? []);
       setRoles(roleResult.data ?? []);
     });
   }, []);
+  const visibleChemicals = chemicals.filter((chemical) => `${chemical.abbreviation ?? ''} ${chemical.canonical_name} ${chemical.cas_number ?? ''} ${chemical.chemical_class ?? ''}`.toLocaleLowerCase('tr').includes(chemicalQuery.trim().toLocaleLowerCase('tr')));
 
   const pickPdf = async () => {
     const result = await DocumentPicker.getDocumentAsync({ type: 'application/pdf', copyToCacheDirectory: true });
@@ -72,15 +87,34 @@ export default function NewPatentScreen() {
         setPublicationDate((current) => current || metadata.publication_date || '');
         setAssignee((current) => current || metadata.assignee || '');
         setAbstractText((current) => current || metadata.abstract || '');
-        setSummary((current) => current || metadata.abstract?.slice(0, 1_500) || '');
-        setLookupMessage('Yayın bilgileri otomatik dolduruldu; kaydetmeden önce kontrol edin.');
+        const suggestions = data.suggestions as LookupSuggestions | undefined;
+        if (suggestions) {
+          const suggestedChemicals = suggestions.chemicals.map((item) => item.chemical_id);
+          const suggestedRoles = Object.fromEntries(suggestions.chemicals.filter((item) => item.role_id).map((item) => [item.chemical_id, item.role_id as string]));
+          const productSuggestions = suggestions.commercial_products ?? [];
+          const suggestedProducts = productSuggestions.map((item) => item.commercial_product_id);
+          const suggestedProductRoles = Object.fromEntries(productSuggestions.filter((item) => item.role_id).map((item) => [item.commercial_product_id, item.role_id as string]));
+          setSuggestedCategoryIds(suggestions.category_ids);
+          setSuggestedPurposeIds(suggestions.purpose_ids);
+          setSuggestedChemicalIds(suggestedChemicals);
+          setSuggestedProductIds(suggestedProducts);
+          setCategoryIds((current) => current.length ? current : suggestions.category_ids);
+          setPurposeIds((current) => current.length ? current : suggestions.purpose_ids);
+          setChemicalIds((current) => current.length ? current : suggestedChemicals);
+          setRoleByChemical((current) => Object.keys(current).length ? current : suggestedRoles);
+          setProductIds((current) => current.length ? current : suggestedProducts);
+          setRoleByProduct((current) => Object.keys(current).length ? current : suggestedProductRoles);
+          const counts = [suggestions.category_ids.length ? `${suggestions.category_ids.length} kategori` : '', suggestions.purpose_ids.length ? `${suggestions.purpose_ids.length} teknik amaç` : '', suggestedChemicals.length ? `${suggestedChemicals.length} kimyasal` : '', suggestedProducts.length ? `${suggestedProducts.length} ticari ürün` : ''].filter(Boolean).join(', ');
+          setLookupMessage(counts ? `Yayın bilgileri dolduruldu; ${counts} kanıta göre önerildi. Kontrol edebilirsiniz.` : 'Yayın bilgileri dolduruldu. Sınıflandırma için yeterli açık kanıt yok; manuel seçebilirsiniz.');
+        } else setLookupMessage('Yayın bilgileri otomatik dolduruldu; sınıflandırmayı manuel kontrol edin.');
       }
     }
   };
 
   const save = async () => {
     if (!session || !pdf || !title.trim()) { Alert.alert('Eksik bilgi', 'Başlık ve PDF zorunludur.'); return; }
-    if (chemicalIds.length && !roleId) { Alert.alert('Kimyasal rolü gerekli', 'Seçtiğiniz kimyasalların patentteki rolünü de seçin.'); return; }
+    if (chemicalIds.some((chemicalId) => !roleByChemical[chemicalId])) { Alert.alert('Kimyasal rolü gerekli', 'Seçtiğiniz her kimyasalın patentteki rolünü ayrı seçin.'); return; }
+    if (productIds.some((productId) => !roleByProduct[productId])) { Alert.alert('Ürün rolü gerekli', 'Seçtiğiniz her ticari ürünün patentteki rolünü ayrı seçin.'); return; }
     setSaving(true);
     const patentId = Crypto.randomUUID();
     const storagePath = `${session.user.id}/${patentId}/${Crypto.randomUUID()}.pdf`;
@@ -105,7 +139,8 @@ export default function NewPatentScreen() {
       await Promise.all([
         categoryIds.length ? supabase.from('patent_application_categories').insert(categoryIds.map((category_id) => ({ patent_id: patentId, category_id }))) : null,
         purposeIds.length ? supabase.from('patent_technical_purposes').insert(purposeIds.map((purpose_id) => ({ patent_id: patentId, purpose_id }))) : null,
-        chemicalIds.length && roleId ? supabase.from('patent_chemicals').insert(chemicalIds.map((chemical_id) => ({ patent_id: patentId, chemical_id, chemical_role_id: roleId, source_type: 'MANUAL', user_confirmed: true }))) : null,
+        chemicalIds.length ? supabase.from('patent_chemicals').insert(chemicalIds.map((chemical_id) => ({ patent_id: patentId, chemical_id, chemical_role_id: roleByChemical[chemical_id], source_type: 'MANUAL', user_confirmed: true }))) : null,
+        productIds.length ? supabase.from('patent_chemicals').insert(productIds.map((commercial_product_id) => ({ patent_id: patentId, commercial_product_id, chemical_role_id: roleByProduct[commercial_product_id], source_type: 'MANUAL', user_confirmed: true }))) : null,
       ]);
 
       for (const name of tags.split(',').map((tag) => tag.trim()).filter(Boolean).slice(0, 20)) {
@@ -133,17 +168,26 @@ export default function NewPatentScreen() {
         <Field label="Patent numarası" value={patentNumber} onChangeText={setPatentNumber} placeholder="EP 3 821 947 A1" />
         <View style={styles.twoColumns}><Field compact label="Ülke kodu" value={countryCode} onChangeText={setCountryCode} placeholder="EP" /><Field compact label="Hak sahibi" value={assignee} onChangeText={setAssignee} /></View>
         <Field label="Yayın tarihi (YYYY-AA-GG)" value={publicationDate} onChangeText={setPublicationDate} placeholder="2024-03-18" />
-        <Field label="Kısa özet" value={summary} onChangeText={setSummary} multiline />
-        <Field label="Abstract" value={abstractText} onChangeText={setAbstractText} multiline />
+        <Field label="Türkçe abstract / özet" value={summary} onChangeText={setSummary} multiline placeholder="PDF taramasının Türkçe özeti burada görünür; dilediğiniz gibi düzenleyebilirsiniz." />
+        <Field label="Orijinal abstract" value={abstractText} onChangeText={setAbstractText} multiline />
         <Field label="Notlar" value={notes} onChangeText={setNotes} multiline />
       </Section>
-      <Section title="02 · Uygulama"><ChoiceGrid items={categories} selected={categoryIds} setSelected={setCategoryIds} /></Section>
-      <Section title="03 · Teknik amaç"><ChoiceGrid items={purposes} selected={purposeIds} setSelected={setPurposeIds} /></Section>
+      <Section title="02 · Uygulama">{suggestedCategoryIds.length > 0 && <Text style={styles.suggestionBadge}>OTOMATİK ÖNERİ · KONTROL EDİN</Text>}<ChoiceGrid items={categories} selected={categoryIds} setSelected={setCategoryIds} /></Section>
+      <Section title="03 · Teknik amaç">{suggestedPurposeIds.length > 0 && <Text style={styles.suggestionBadge}>OTOMATİK ÖNERİ · KONTROL EDİN</Text>}<ChoiceGrid items={purposes} selected={purposeIds} setSelected={setPurposeIds} /></Section>
       <Section title="04 · Kimyasallar ve rol">
-        <Text style={styles.label}>Kimyasal rolü · manuel seçim</Text><ChoiceGrid items={roles} selected={roleId ? [roleId] : []} setSelected={(ids) => setRoleId(ids.at(-1) ?? '')} single />
-        <Text style={[styles.label, { marginTop: 18 }]}>Kimyasallar</Text><ChoiceGrid items={chemicals.map((item) => ({ id: item.id, name: item.abbreviation || item.canonical_name }))} selected={chemicalIds} setSelected={setChemicalIds} />
+        {suggestedChemicalIds.length > 0 && <Text style={styles.suggestionBadge}>BELGEDEN EŞLEŞTİ · KONTROL EDİN</Text>}
+        <Text style={styles.helper}>Her kimyasalın rolü ayrı belirlenir; isim, kısaltma, CAS veya sınıfla arayabilirsiniz.</Text>
+        <Field label="Katalogda ara" value={chemicalQuery} onChangeText={setChemicalQuery} placeholder="DICY, anhidrit, amin, 461-58-5…" />
+        <Text style={styles.label}>Kimyasallar · {visibleChemicals.length}</Text><ChoiceGrid items={visibleChemicals.map((item) => ({ id: item.id, name: `${item.abbreviation || item.canonical_name}${suggestedChemicalIds.includes(item.id) ? ' · önerildi' : ''}` }))} selected={chemicalIds} setSelected={(ids) => { setChemicalIds(ids); setRoleByChemical((current) => Object.fromEntries(Object.entries(current).filter(([chemicalId]) => ids.includes(chemicalId)))); }} />
+        {chemicalIds.map((chemicalId) => { const chemical = chemicals.find((item) => item.id === chemicalId); return <View key={chemicalId} style={styles.roleCard}><Text style={styles.roleTitle}>{chemical?.abbreviation || chemical?.canonical_name || 'Kimyasal'} rolü</Text><ChoiceGrid items={roles} selected={roleByChemical[chemicalId] ? [roleByChemical[chemicalId]] : []} setSelected={(ids) => setRoleByChemical((current) => ({ ...current, [chemicalId]: ids.at(-1) ?? '' }))} single /></View>; })}
       </Section>
-      <Section title="05 · Özel etiketler"><Field label="Virgülle ayırın" value={tags} onChangeText={setTags} placeholder="rakip, yüksek Tg, incelenecek" /></Section>
+      <Section title="05 · Ticari ürünler ve rol">
+        {suggestedProductIds.length > 0 && <Text style={styles.suggestionBadge}>TİCARİ AD EŞLEŞTİ · KONTROL EDİN</Text>}
+        <Text style={styles.helper}>Ticari ürün saf kimyasal sayılmaz; türü ve bileşen bağlantıları ayrı tutulur.</Text>
+        <ChoiceGrid items={commercialProducts.map((item) => ({ id: item.id, name: `${item.trade_name}${suggestedProductIds.includes(item.id) ? ' · önerildi' : ''}` }))} selected={productIds} setSelected={(ids) => { setProductIds(ids); setRoleByProduct((current) => Object.fromEntries(Object.entries(current).filter(([productId]) => ids.includes(productId)))); }} />
+        {productIds.map((productId) => { const product = commercialProducts.find((item) => item.id === productId); return <View key={productId} style={styles.roleCard}><Text style={styles.roleTitle}>{product?.trade_name || 'Ticari ürün'} rolü</Text><Text style={styles.productMeta}>{productTypeLabel(product?.product_type ?? null)} · {product?.manufacturer || 'Üretici belirsiz'}</Text><ChoiceGrid items={roles} selected={roleByProduct[productId] ? [roleByProduct[productId]] : []} setSelected={(ids) => setRoleByProduct((current) => ({ ...current, [productId]: ids.at(-1) ?? '' }))} single /></View>; })}
+      </Section>
+      <Section title="06 · Özel etiketler"><Field label="Virgülle ayırın" value={tags} onChangeText={setTags} placeholder="rakip, yüksek Tg, incelenecek" /></Section>
       <Pressable disabled={saving || lookupBusy} onPress={save} style={[styles.saveButton, lookupBusy && { opacity: .5 }]}>{saving || lookupBusy ? <ActivityIndicator color="#F7F9FF" /> : <Text style={styles.saveText}>PDF’yi yükle ve kaydet</Text>}</Pressable>
     </ScrollView>
   );
@@ -158,6 +202,7 @@ function ChoiceGrid({ items, selected, setSelected, single = false }: { items: N
 type PatentMetadata = { title: string | null; patent_number: string | null; country_code: string | null; publication_date: string | null; assignee: string | null; abstract: string | null };
 function normalizeNumber(value: string) { return value.toUpperCase().replace(/[^A-Z0-9]/g, ''); }
 function inferPatentNumber(filename: string) { const match = normalizeNumber(filename.replace(/\.pdf$/i, '')).match(/([A-Z]{2})(\d{4,})([A-Z]\d?)?/); return match ? { country: match[1], number: `${match[1]}${match[2]}${match[3] ?? ''}` } : null; }
+function productTypeLabel(value: string | null) { if (value === 'PURE_SUBSTANCE' || value === 'PURE_CHEMICAL') return 'Saf madde olarak kayıtlı'; if (value === 'MIXTURE') return 'Karışım'; if (value === 'FORMULATED_PRODUCT') return 'Formüle ürün'; return 'Türü doğrulanmalı'; }
 
 const styles = StyleSheet.create({
   content: { gap: 16, padding: 18, paddingBottom: 50, backgroundColor: palette.background },
@@ -168,6 +213,10 @@ const styles = StyleSheet.create({
   fileButton: { minHeight: 88, justifyContent: 'center', padding: 16, borderWidth: 1, borderStyle: 'dashed', borderColor: palette.borderStrong, borderRadius: 16, backgroundColor: palette.surfaceMuted },
   fileSelected: { borderStyle: 'solid', borderColor: palette.blue, backgroundColor: palette.blueMuted }, fileTitle: { color: palette.text, fontSize: 14, fontWeight: '700' }, fileMeta: { marginTop: 5, color: palette.textMuted, fontSize: 11 },
   lookupMessage: { padding: 11, borderRadius: 12, overflow: 'hidden', color: '#BAC8F3', backgroundColor: palette.blueMuted, fontSize: 10, lineHeight: 15 },
+  suggestionBadge: { alignSelf: 'flex-start', paddingHorizontal: 9, paddingVertical: 6, borderWidth: 1, borderColor: '#415B9D', borderRadius: 999, overflow: 'hidden', color: '#BDCBF5', backgroundColor: '#1A2540', fontSize: 8, fontWeight: '800', letterSpacing: .6 },
+  helper: { marginTop: -4, color: palette.textMuted, fontSize: 10, lineHeight: 15 },
+  roleCard: { gap: 10, marginTop: 4, padding: 13, borderWidth: 1, borderColor: palette.border, borderRadius: 15, backgroundColor: palette.surfaceMuted }, roleTitle: { color: palette.text, fontSize: 12, fontWeight: '800' },
+  productMeta: { marginTop: -5, color: palette.textMuted, fontSize: 9 },
   field: { gap: 7 }, label: { color: '#B7BDC8', fontSize: 11, fontWeight: '700' }, input: { minHeight: 52, paddingHorizontal: 15, borderWidth: 1, borderColor: palette.border, borderRadius: 15, color: palette.text, backgroundColor: palette.surfaceMuted }, textarea: { minHeight: 96, paddingTop: 14, textAlignVertical: 'top' }, twoColumns: { flexDirection: 'row', gap: 10 },
   choiceGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 }, choice: { paddingHorizontal: 12, paddingVertical: 10, borderWidth: 1, borderColor: palette.border, borderRadius: 13, backgroundColor: palette.surfaceMuted }, choiceActive: { borderColor: palette.blue, backgroundColor: palette.blueMuted }, choiceText: { color: palette.textMuted, fontSize: 11, fontWeight: '600' }, choiceTextActive: { color: '#C8D5FF' },
   saveButton: { height: 56, alignItems: 'center', justifyContent: 'center', borderRadius: 17, backgroundColor: palette.blue }, saveText: { color: '#F7F9FF', fontSize: 14, fontWeight: '800' },

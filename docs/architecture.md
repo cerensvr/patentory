@@ -37,6 +37,8 @@ docs/
 
 - `application_categories` and `technical_purposes` support parent/child hierarchies. A null `owner_user_id` is curated shared data; a non-null value is private user-created data.
 - `chemicals` stores canonical identity only. `chemical_synonyms` stores alternate spellings against one chemical.
+- The shared epoxy catalog has 29 curated records grouped for filtering as epoxy resin/reactive diluent, amine hardener, latent hardener/accelerator, anhydride hardener, thiol hardener, or other formulation material. The complete curation boundary and primary references are recorded in `docs/chemistry-catalog.md`.
+- Curated PubChem imports accept only unambiguous chemical-name variants. Trade names, supplier codes, registry identifiers, and formulations are excluded from `chemical_synonyms`.
 - `commercial_products` stores trade products independently. A product can represent a pure substance, mixture, or formulated product.
 - `commercial_product_chemicals` maps zero or more known chemicals to a trade product with optional concentration bounds and units. No mapping implies that composition is unknown.
 - `chemical_roles` is curated shared reference data.
@@ -45,6 +47,7 @@ docs/
 - `tags` are always private to their creator.
 - `ai_analysis_runs` stores versioned structured results, model/token metadata, failures, and review state for one user-owned patent.
 - `ai_analysis_suggestions` stores evidence-linked chemical, trade-product, category, and purpose proposals. The client has read-only table access; an authenticated Edge Function applies decisions.
+- `ai_learning_feedback` stores each user's accepted, rejected, and corrected terminology separately from the curated catalog. Clients can read only their own rows; only the secured review Edge Function can write them.
 
 ### Search semantics
 
@@ -84,14 +87,16 @@ Viewing uses authenticated downloads or short-lived signed URLs created under th
 
 ## AI analysis boundary
 
-- `analyze-patent` verifies the caller with `auth.getUser()`, re-checks patent ownership, enforces PDF MIME/size and per-user run limits, then creates a three-minute signed URL for OpenAI.
-- The OpenAI Responses API receives the PDF at high detail with strict JSON Schema output and `store: false`. The PDF is treated as untrusted data; document instructions cannot override the analysis prompt. A hashed user/patent identifier is used for provider-side abuse monitoring; no e-mail address is sent.
+- `analyze-patent` verifies the caller with `auth.getUser()`, re-checks patent ownership, enforces PDF MIME/size and per-user run limits, then retrieves the private PDF through a three-minute signed URL inside the Edge Function.
+- Gemini 3.7 Flash is the primary structured PDF-analysis model. If its free quota is exhausted, Gemini 3.5 Flash-Lite can take over automatically; the web and Android clients do not enable paid OpenAI fallback. PDF bytes and provider keys never enter a client bundle.
+- Gemini receives the PDF with a strict JSON Schema and `store: false`. The PDF is treated as untrusted data; document instructions cannot override the analysis prompt. No e-mail address is sent.
 - Canonical chemical, synonym, and commercial-product matching remain separate. A trade name is never inferred to be a pure chemical without an explicit catalog mapping.
-- Runtime validation trims and bounds every field, deduplicates findings, and excludes suggestions below the confidence/evidence floor from the actionable review queue. Claims, prior art, description, and experimental examples are explicitly separated in the prompt.
-- Every actionable suggestion includes confidence and a short direct evidence quote. `review-ai-suggestion` re-verifies the user and applies only an explicit accept/reject decision; unmatched roles cannot silently fall back to “Other”.
-- Transient provider failures are retried once within an overall deadline. Quota, configuration, timeout, and incomplete-response failures use safe user-facing error codes while the manual workflow stays available.
-- `lookup-patent-metadata` is an authenticated, free metadata fallback. It recognizes a publication number from the selected PDF filename and retrieves bibliographic fields without sending the PDF to an AI provider.
-- `OPENAI_API_KEY`, the service-role key, and signed URLs never enter client bundles or application logs.
+- Runtime validation trims and bounds every field, deduplicates findings, and excludes suggestions below the confidence/evidence floor from the actionable review queue. Claims, prior art, description, and experimental examples are explicitly separated in the prompt. Each numbered/comparative/control example has independent formulation, ordered production-step, and test-result rows so data from different examples is not merged.
+- Every actionable suggestion includes confidence and a short direct evidence quote. `review-ai-suggestion` re-verifies the user and applies only an explicit decision; unmatched roles cannot silently fall back to “Other”. A rejection opens a correction question. Accepted, corrected, and explicitly rejected mappings are stored per user and ground later analyses without altering the curated chemical catalog.
+- Quota, configuration, timeout, and incomplete-response failures use safe user-facing error codes. Gemini model fallback is limited to explicitly configured models.
+- A faithful Turkish abstract translation is stored in `user_summary`; the source-language abstract remains in `abstract_text` and is never replaced by the translation.
+- `lookup-patent-metadata` is an authenticated, free fallback. It recognizes a publication number from the selected PDF filename, retrieves bibliographic fields, and preselects categories, purposes, canonical chemicals, roles, and commercial products only when matching document evidence exists. Incomplete source pages are retried, and every preselection remains editable.
+- `GEMINI_API_KEY`, any optional `OPENAI_API_KEY`, the service-role key, and signed URLs never enter client bundles or application logs.
 
 ## Authentication
 
@@ -124,7 +129,7 @@ Client-safe values:
 Server-only values:
 
 - Edge Functions receive Supabase platform secrets automatically.
-- `OPENAI_API_KEY` and `OPENAI_PATENT_MODEL` are configured through Supabase secrets, never through client-prefixed variables.
+- `GEMINI_API_KEY` and `GEMINI_PATENT_MODELS` are configured through Supabase secrets, never through client-prefixed variables. OpenAI settings remain an optional server-only emergency fallback.
 - Secret/service-role keys are forbidden in web bundles, Expo configuration, committed files, logs, and analytics.
 
 ## Implementation sequence

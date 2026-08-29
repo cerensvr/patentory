@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import Image from 'next/image';
 import type { ReactNode } from 'react';
 
 import { signOut } from '@/app/actions';
@@ -9,7 +10,7 @@ export function AppShell({ children, email }: { children: ReactNode; email: stri
     <main className="workspace-shell">
       <aside className="sidebar">
         <Link className="brand-lockup" href="/">
-          <span className="brand-mark">P</span>
+          <Image alt="Patentory" className="brand-logo" height={42} priority src="/patentory-icon.png" width={42} />
           <div><strong>Patentory</strong><span>Materials intelligence</span></div>
         </Link>
         <nav className="main-nav" aria-label="Ana menü">
@@ -19,11 +20,12 @@ export function AppShell({ children, email }: { children: ReactNode; email: stri
           <Link href="/patents/new"><span>＋</span>Patent ekle</Link>
           <Link href="/settings"><span>⚙</span>Hesap ve güvenlik</Link>
         </nav>
-        <div className="sidebar-lab-note"><span>Human-reviewed AI</span><p>AI bulguları kanıt sayfasıyla gelir ve yalnızca sizin onayınızla kütüphaneye işlenir.</p></div>
         <div className="profile-chip">
           <span className="avatar">{initials}</span>
           <div><strong>{email}</strong><span>Kişisel çalışma alanı</span></div>
-          <form action={signOut}><button type="submit" title="Çıkış yap">↪</button></form>
+          <form action={signOut} className="logout-form">
+            <button type="submit"><span aria-hidden="true">↗</span>Çıkış yap</button>
+          </form>
         </div>
       </aside>
       <section className="content-area">{children}</section>

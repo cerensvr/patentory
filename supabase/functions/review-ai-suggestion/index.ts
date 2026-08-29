@@ -11,6 +11,21 @@ function response(body: Record<string, unknown>, status = 200) {
   return new Response(JSON.stringify(body), { status, headers });
 }
 
+function cleanCorrection(value: unknown) {
+  return String(value ?? '').trim().replace(/\s+/g, ' ').slice(0, 500);
+}
+
+function normalizeLearningLabel(value: string) {
+  return value
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLocaleLowerCase('tr-TR')
+    .replace(/[^a-z0-9çğıöşü]+/gi, ' ')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .slice(0, 300);
+}
+
 Deno.serve(async (request) => {
   if (request.method === 'OPTIONS') return new Response('ok', { headers });
   if (request.method !== 'POST') return response({ error: 'Yalnızca POST desteklenir.' }, 405);
@@ -28,8 +43,12 @@ Deno.serve(async (request) => {
 
   let suggestionId = '';
   let decision = '';
+  let correction = '';
   try {
-    const body = await request.json(); suggestionId = String(body?.suggestionId ?? ''); decision = String(body?.decision ?? '');
+    const body = await request.json();
+    suggestionId = String(body?.suggestionId ?? '');
+    decision = String(body?.decision ?? '');
+    correction = cleanCorrection(body?.correction);
   } catch { return response({ error: 'Geçersiz istek.' }, 400); }
   if (!/^[0-9a-f-]{36}$/i.test(suggestionId) || !['ACCEPTED', 'REJECTED'].includes(decision)) return response({ error: 'Geçersiz öneri veya karar.' }, 400);
 
@@ -62,6 +81,34 @@ Deno.serve(async (request) => {
     }
   }
 
+  const learningDecision = decision === 'ACCEPTED' ? 'ACCEPTED' : correction ? 'CORRECTED' : 'REJECTED';
+  const resolvedLabel = decision === 'ACCEPTED'
+    ? cleanCorrection(suggestion.normalized_value || suggestion.label)
+    : correction || null;
+  const { error: learningError } = await serviceClient.from('ai_learning_feedback').upsert({
+    owner_user_id: authData.user.id,
+    source_suggestion_id: suggestion.id,
+    source_run_id: suggestion.run_id,
+    source_patent_id: suggestion.patent_id,
+    suggestion_type: suggestion.suggestion_type,
+    observed_label: suggestion.label,
+    normalized_observed_label: normalizeLearningLabel(suggestion.label),
+    decision: learningDecision,
+    resolved_label: resolvedLabel,
+    correction_note: correction || null,
+    matched_chemical_id: suggestion.matched_chemical_id,
+    matched_commercial_product_id: suggestion.matched_commercial_product_id,
+    matched_category_id: suggestion.matched_category_id,
+    matched_purpose_id: suggestion.matched_purpose_id,
+    matched_role_id: suggestion.matched_role_id,
+    evidence_quote: suggestion.evidence_quote,
+    evidence_page: suggestion.evidence_page,
+  }, { onConflict: 'owner_user_id,source_suggestion_id' });
+  if (learningError) {
+    console.error('AI_LEARNING_FEEDBACK_WRITE_FAILED', learningError.code, learningError.message);
+    return response({ error: 'Düzeltme öğrenme hafızasına kaydedilemedi.', code: 'LEARNING_WRITE_FAILED' }, 500);
+  }
+
   const { error: reviewError } = await serviceClient.from('ai_analysis_suggestions').update({ review_status: decision, reviewed_at: new Date().toISOString() }).eq('id', suggestion.id).eq('owner_user_id', authData.user.id);
   if (reviewError) return response({ error: 'Öneri durumu güncellenemedi.' }, 500);
   const { count } = await serviceClient.from('ai_analysis_suggestions').select('id', { count: 'exact', head: true }).eq('run_id', suggestion.run_id).eq('review_status', 'PENDING');
@@ -71,5 +118,5 @@ Deno.serve(async (request) => {
       serviceClient.from('patents').update({ ai_analysis_status: 'COMPLETED' }).eq('id', suggestion.patent_id).eq('owner_user_id', authData.user.id),
     ]);
   }
-  return response({ status: decision });
+  return response({ status: decision, learned: true, learningDecision, resolvedLabel });
 });

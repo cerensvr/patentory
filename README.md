@@ -11,11 +11,15 @@ Live web application: [patentory.vercel.app](https://patentory.vercel.app)
 - Private PDF bucket with authenticated access and 15-minute signed URLs
 - Manual metadata, application category, technical purpose, chemical/role, and custom-tag entry
 - Canonical chemicals, separate synonyms, separate commercial products, and product-to-chemical mappings
+- Free patent-number lookup with evidence-based category, purpose, chemical, role, and trade-product preselection; every suggestion remains editable
+- Curated PubChem name variants for concept matching without treating trade names or registry identifiers as canonical chemical synonyms
+- A 29-record epoxy catalog grouped into resins/reactive diluents, amine, latent, anhydride, and thiol curing systems
 - Search RPC for patents and chemical concepts, including IPDA/synonym/trade-product resolution
 - Responsive dark web UI and Android UI using graphite, steel blue, and limited warm accents
 - Google Play-ready Android package ID and EAS production AAB profile
 - Evidence-linked AI PDF analysis through JWT-protected Edge Functions
-- Human review queue for chemicals, commercial products, categories, and purposes
+- Turkish AI reports with example-summary, formulation, manufacturing-step, test-result, and performance tables
+- Evidence review queue for chemicals, commercial products, categories, and purposes
 - Password recovery, in-app account deletion, and a public-ready privacy page
 - SQL migrations, seed data, database linting, and pgTAP cross-user isolation tests
 
@@ -40,7 +44,7 @@ npx supabase start
 npx supabase db reset --local
 ```
 
-Copy `.env.example` values into `apps/web/.env.local` and `apps/mobile/.env.local`. Only the Supabase project URL and publishable key belong in client environment files. Never add a service-role key or OpenAI key.
+Copy `.env.example` values into `apps/web/.env.local` and `apps/mobile/.env.local`. Only the Supabase project URL and publishable key belong in client environment files. Never add a service-role or AI provider key.
 
 AI secrets are configured only in Supabase:
 
@@ -83,6 +87,6 @@ Patentory uses the dedicated Supabase project currently named **Patent Knowledge
 
 ## AI analysis
 
-`analyze-patent` sends a three-minute signed private PDF URL to the OpenAI Responses API with high-detail PDF input, Structured Outputs, `store: false`, prompt-injection instructions, a 50 MB limit, per-user rate limiting, and versioned analysis runs. It extracts technical problem/solution, novelty, independent claims, chemicals, trade products, process steps, examples, and performance measurements with page evidence. Suggestions never modify confirmed library data automatically; `review-ai-suggestion` verifies the user again and applies only individually accepted items. `delete-account` removes private Storage objects before deleting the Auth user.
+`analyze-patent` retrieves the private PDF inside a secured Edge Function and sends it to Gemini with strict structured output, prompt-injection resistance, size/rate limits, and versioned analysis runs. Gemini 3.7 Flash is primary and 3.5 Flash-Lite can take over on quota failure. It extracts technical problem/solution, novelty, independent claims, chemicals, trade products, process steps, separate patent examples, per-example formulation rows, ordered manufacturing steps, test results, and performance measurements with page evidence. It writes a faithful Turkish abstract translation to a field that stays separate from the original abstract. `review-ai-suggestion` applies individually confirmed findings and records per-user accepted/rejected/corrected learning without mutating the curated chemistry catalog. `delete-account` removes private Storage objects before deleting the Auth user.
 
-The manual upload, classification, CRUD, and filter workflow remains independent of OpenAI availability. `pgvector` can be introduced later for semantic similarity without redesigning the relational core.
+The upload, classification, CRUD, and filter workflow remains independent of provider availability. `pgvector` can be introduced later for semantic similarity without redesigning the relational core.

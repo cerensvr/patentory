@@ -9,6 +9,7 @@ import {
   Platform,
   Pressable,
   RefreshControl,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -22,6 +23,7 @@ import { useAuth } from '@/providers/auth-provider';
 
 type PatentResult =
   Database['public']['Functions']['search_patents']['Returns'][number];
+type ChemicalFilter = { id: string; canonical_name: string; abbreviation: string | null; chemical_class: string | null };
 
 export default function HomeScreen() {
   const { loading, session } = useAuth();
@@ -156,7 +158,13 @@ function LibraryScreen({ userId }: { userId: string }) {
   const [patents, setPatents] = useState<PatentResult[]>([]);
   const [query, setQuery] = useState('');
   const [favoritesOnly, setFavoritesOnly] = useState(false);
+  const [chemicalFilters, setChemicalFilters] = useState<ChemicalFilter[]>([]);
+  const [selectedChemicalIds, setSelectedChemicalIds] = useState<string[]>([]);
   const [refreshing, setRefreshing] = useState(false);
+
+  useEffect(() => {
+    void supabase.from('chemicals').select('id,canonical_name,abbreviation,chemical_class').order('canonical_name').then(({ data }) => setChemicalFilters(data ?? []));
+  }, []);
 
   const load = useCallback(async () => {
     setRefreshing(true);
@@ -164,9 +172,10 @@ function LibraryScreen({ userId }: { userId: string }) {
       ? await supabase.rpc('search_chemical_concepts', { p_query: query.trim(), p_limit: 1 })
       : { data: null };
     const chemicalId = conceptResult.data?.[0]?.chemical_id;
+    const filterChemicalIds = [...new Set([...selectedChemicalIds, ...(chemicalId ? [chemicalId] : [])])];
     const { data, error } = await supabase.rpc('search_patents', {
       p_query: chemicalId ? undefined : query.trim() || undefined,
-      p_chemical_ids: chemicalId ? [chemicalId] : undefined,
+      p_chemical_ids: filterChemicalIds.length ? filterChemicalIds : undefined,
       p_favorite_only: favoritesOnly,
       p_limit: 50,
     });
@@ -174,7 +183,7 @@ function LibraryScreen({ userId }: { userId: string }) {
 
     if (error) Alert.alert('Patentler yüklenemedi', error.message);
     else setPatents(data ?? []);
-  }, [favoritesOnly, query]);
+  }, [favoritesOnly, query, selectedChemicalIds]);
 
   // The async Supabase loader owns the refresh state for initial and manual loads.
   // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -217,6 +226,17 @@ function LibraryScreen({ userId }: { userId: string }) {
         </Pressable>
       </View>
 
+      <View style={styles.chemicalFilterBlock}>
+        <View style={styles.chemicalFilterHeading}><Text style={styles.chemicalFilterLabel}>EPOKSİ KİMYASI</Text><Text style={styles.chemicalFilterHint}>Birlikte bulunması gerekenleri seçin</Text></View>
+        <ScrollView horizontal contentContainerStyle={styles.chemicalFilterScroll} showsHorizontalScrollIndicator={false}>
+          {selectedChemicalIds.length > 0 && <Pressable onPress={() => setSelectedChemicalIds([])} style={styles.clearChemicalChip}><Text style={styles.clearChemicalText}>Temizle</Text></Pressable>}
+          {chemicalFilters.map((chemical) => {
+            const selected = selectedChemicalIds.includes(chemical.id);
+            return <Pressable key={chemical.id} onPress={() => setSelectedChemicalIds((current) => selected ? current.filter((id) => id !== chemical.id) : [...current, chemical.id])} style={[styles.chemicalFilterChip, selected && styles.chemicalFilterChipSelected]}><Text style={[styles.chemicalFilterChipText, selected && styles.chemicalFilterChipTextSelected]}>{chemical.abbreviation || chemical.canonical_name}</Text><Text numberOfLines={1} style={styles.chemicalFilterClass}>{chemical.chemical_class || 'Kimyasal'}</Text></Pressable>;
+          })}
+        </ScrollView>
+      </View>
+
       <View style={styles.chips}>
         <Pressable
           onPress={() => setFavoritesOnly(false)}
@@ -236,7 +256,7 @@ function LibraryScreen({ userId }: { userId: string }) {
         ListEmptyComponent={
           <View style={styles.emptyState}>
             <Text style={styles.emptyTitle}>Kütüphaneniz hazır.</Text>
-            <Text style={styles.emptyCopy}>Bir patent PDF’si ekleyip manuel sınıflandırın—AI isteğe bağlıdır.</Text>
+            <Text style={styles.emptyCopy}>Bir patent PDF’si ekleyin; kimyasalları, örnekleri ve test sonuçlarını tek yerde inceleyin.</Text>
           </View>
         }
         renderItem={({ item }) => (
@@ -294,6 +314,18 @@ const styles = StyleSheet.create({
   searchInput: { height: 48, flex: 1, paddingHorizontal: 15, borderWidth: 1, borderColor: palette.border, borderRadius: 15, color: palette.text, backgroundColor: palette.surface },
   searchButton: { height: 48, paddingHorizontal: 17, alignItems: 'center', justifyContent: 'center', borderRadius: 15, backgroundColor: palette.blue },
   searchButtonText: { color: '#F7F9FF', fontSize: 12, fontWeight: '800' },
+  chemicalFilterBlock: { gap: 8, paddingTop: 5, backgroundColor: palette.background },
+  chemicalFilterHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 15 },
+  chemicalFilterLabel: { color: '#8498CC', fontSize: 8, letterSpacing: 1, fontWeight: '800' },
+  chemicalFilterHint: { color: palette.textMuted, fontSize: 8 },
+  chemicalFilterScroll: { gap: 7, paddingHorizontal: 14, paddingBottom: 7 },
+  chemicalFilterChip: { width: 116, gap: 3, paddingHorizontal: 11, paddingVertical: 9, borderWidth: 1, borderColor: palette.border, borderRadius: 13, backgroundColor: palette.surface },
+  chemicalFilterChipSelected: { borderColor: palette.blue, backgroundColor: palette.blueMuted },
+  chemicalFilterChipText: { color: '#C3CAD5', fontSize: 10, fontWeight: '800' },
+  chemicalFilterChipTextSelected: { color: '#D7E0FF' },
+  chemicalFilterClass: { color: '#707A89', fontSize: 7 },
+  clearChemicalChip: { alignSelf: 'stretch', justifyContent: 'center', paddingHorizontal: 13, borderWidth: 1, borderColor: '#4B3A3A', borderRadius: 13, backgroundColor: '#24191A' },
+  clearChemicalText: { color: '#D3A3A0', fontSize: 9, fontWeight: '800' },
   chips: { flexDirection: 'row', gap: 8, paddingHorizontal: 14, paddingVertical: 13, backgroundColor: palette.background },
   chip: { paddingHorizontal: 13, paddingVertical: 9, borderWidth: 1, borderColor: palette.border, borderRadius: 14, backgroundColor: palette.surface },
   chipSelected: { borderColor: palette.blue, backgroundColor: palette.blueMuted },

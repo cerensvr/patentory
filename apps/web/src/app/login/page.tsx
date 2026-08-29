@@ -1,3 +1,5 @@
+import Image from 'next/image';
+
 import { sendPasswordReset, signIn, signUp } from './actions';
 
 type LoginPageProps = {
@@ -12,11 +14,11 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
   return (
     <main className="auth-page">
       <section className="auth-story">
-        <div className="auth-brand"><span className="brand-mark">P</span>Patentory</div>
+        <div className="auth-brand"><Image alt="Patentory" className="brand-logo" height={46} priority src="/patentory-icon.png" width={46} />Patentory</div>
         <div>
           <p className="eyebrow">MATERIALS INTELLIGENCE</p>
           <h1>Patentleri tekrar kullanılabilir Ar-Ge bilgisine dönüştürün.</h1>
-          <p>Kimyasalları, uygulamaları ve teknik amaçları manuel olarak sınıflandırın. AI olmadan da tüm kütüphane çalışır.</p>
+          <p>Patent PDF’lerini, kimyasal eşleşmelerini, deney tablolarını ve teknik bulguları tek bir güvenli çalışma alanında yönetin.</p>
         </div>
         <small>Özel PDF depolama · Kullanıcı bazlı RLS · Ortak web ve Android kütüphanesi</small>
       </section>

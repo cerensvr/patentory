@@ -13,7 +13,7 @@ const anonKey = local.ANON_KEY;
 const serviceKey = local.SERVICE_ROLE_KEY;
 
 const analysis = {
-  patent_metadata: { title: 'AI E2E patent', patent_number: 'QA-AI-001', country_code: 'US', publication_date: '2024-01-15', assignee: 'Example Materials', abstract: 'Example abstract.' },
+  patent_metadata: { title: 'AI E2E patent', patent_number: 'QA-AI-001', country_code: 'US', publication_date: '2024-01-15', assignee: 'Example Materials', abstract: 'Örnek abstractın Türkçe çevirisi.' },
   document_language: 'English',
   executive_summary: 'DGEBA ve IPDA içeren, kimyasal dayanımı ve yapışması yüksek bir epoksi kaplama tarifidir.',
   technical_problem: 'Yüksek yapışma ve kimyasal dayanım sağlayan kaplama ihtiyacı.',
@@ -32,33 +32,66 @@ const analysis = {
   technical_purposes: [{ name: 'High Adhesion', confidence: 0.96, evidence_quote: 'provides high adhesion', page: 1 }],
   process_steps: ['DGEBA ve IPDA karıştırılır', '80 °C’de 2 saat kürlenir'],
   performance_metrics: [{ name: 'Cure temperature', value: '80', unit: '°C', context: 'Example 1', page: 1 }],
-  examples: [{ example_number: 'Example 1', summary: '100 kısım DGEBA ve 25 kısım IPDA.', chemicals: ['DGEBA', 'IPDA'], conditions: ['80 °C', '2 hours'], outcome: 'Cured coating', page: 1 }],
+  examples: [{
+    example_number: 'Örnek 1',
+    summary: '100 kısım DGEBA ve 25 kısım IPDA içeren reçete.',
+    chemicals: ['DGEBA', 'IPDA'],
+    conditions: ['80 °C', '2 saat'],
+    composition: [
+      { component: 'DGEBA', amount: '100', unit: 'phr', basis: 'reçine bazında', role: 'Epoksi reçine', page: 1 },
+      { component: 'IPDA', amount: '25', unit: 'phr', basis: 'reçine bazında', role: 'Sertleştirici', page: 1 },
+    ],
+    production_steps: [
+      { step_number: '1', instruction: 'DGEBA ile IPDA karıştırılır.', conditions: ['23 °C'], page: 1 },
+      { step_number: '2', instruction: 'Karışım kürlenir.', conditions: ['80 °C', '2 saat'], page: 1 },
+    ],
+    test_results: [
+      { test_name: 'Çekme yapışması', method: 'ASTM D4541', result: '12', unit: 'MPa', specimen: 'Çelik panel', page: 1 },
+    ],
+    outcome: 'Kürlenmiş kaplama',
+    page: 1,
+  }],
   warnings: ['Bu çıktı hukuki görüş değildir'],
 };
 
 let mockAttempts = 0;
+const mockPrompts = [];
 const mockServer = http.createServer((request, response) => {
-  if (request.method !== 'POST' || request.url !== '/v1/responses') { response.writeHead(404).end(); return; }
+  if (request.method !== 'POST' || request.url !== '/v1beta/interactions') { response.writeHead(404).end(); return; }
   let body = '';
   request.on('data', (chunk) => { body += chunk; });
   request.on('end', () => {
     const payload = JSON.parse(body);
+    assert.equal(request.headers['x-goog-api-key'], 'test-only-gemini-key');
     assert.equal(payload.store, false);
-    assert.equal(payload.input[0].content[0].type, 'input_file');
-    assert.equal(payload.input[0].content[0].detail, 'high');
-    assert.equal(payload.text.format.type, 'json_schema');
-    assert.ok(payload.text.format.schema.properties.patent_metadata);
-    assert.match(payload.safety_identifier, /^patentory_[0-9a-f]{64}$/);
-    assert.match(payload.prompt_cache_key, /^patentory_patent-review-tr-v3_[0-9a-f]{24}$/);
+    assert.equal(payload.input[0].type, 'document');
+    assert.equal(payload.input[0].mime_type, 'application/pdf');
+    assert.ok(payload.input[0].data.length > 20);
+    assert.equal(payload.input[1].type, 'text');
+    assert.equal(payload.response_format.type, 'text');
+    assert.equal(payload.response_format.mime_type, 'application/json');
+    assert.ok(payload.response_format.schema.properties.patent_metadata);
+    assert.ok(payload.response_format.schema.properties.examples.items.properties.composition);
+    assert.ok(payload.response_format.schema.properties.examples.items.properties.production_steps);
+    assert.ok(payload.response_format.schema.properties.examples.items.properties.test_results);
+    assert.equal(payload.generation_config.max_output_tokens, 18000);
     assert.equal(JSON.stringify(payload).includes('@example.test'), false);
+    mockPrompts.push(payload.input[1].text);
     mockAttempts += 1;
     if (mockAttempts === 1) {
       response.writeHead(429, { 'content-type': 'application/json', 'retry-after': '0' });
-      response.end(JSON.stringify({ error: { code: 'rate_limit_exceeded', message: 'temporary mock limit' } }));
+      assert.equal(payload.model, 'gemini-3.7-flash');
+      response.end(JSON.stringify({ error: { code: 429, status: 'RESOURCE_EXHAUSTED', message: 'temporary mock quota' } }));
       return;
     }
+    if (mockAttempts === 2) assert.equal(payload.model, 'gemini-3.5-flash-lite');
+    if (mockAttempts > 2) assert.equal(payload.model, 'gemini-3.7-flash');
     response.writeHead(200, { 'content-type': 'application/json' });
-    response.end(JSON.stringify({ status: 'completed', output_text: JSON.stringify(analysis), usage: { input_tokens: 120, output_tokens: 420, total_tokens: 540 } }));
+    response.end(JSON.stringify({
+      status: 'completed',
+      steps: [{ type: 'model_output', content: [{ type: 'text', text: JSON.stringify(analysis) }] }],
+      usage: { total_input_tokens: 120, total_output_tokens: 420, total_tokens: 540 },
+    }));
   });
 });
 
@@ -71,6 +104,7 @@ await new Promise((resolve, reject) => {
   const timeout = setTimeout(() => reject(new Error('Edge Functions did not start')), 30_000);
   const inspect = (chunk) => {
     const text = chunk.toString();
+    if (text.includes('AI_LEARNING_FEEDBACK_WRITE_FAILED')) process.stderr.write(text);
     if (text.includes('Serving functions on')) { clearTimeout(timeout); resolve(); }
     if (/error/i.test(text) && !text.includes('inspector')) { clearTimeout(timeout); reject(new Error(text)); }
   };
@@ -108,15 +142,38 @@ let owner;
 let intruder;
 try {
   owner = await createUser('owner'); intruder = await createUser('intruder');
-  const lookedUp = await request('/functions/v1/lookup-patent-metadata', { method: 'POST', token: owner.token, body: { patentNumber: 'US3684617' } });
+  let lookedUp = await request('/functions/v1/lookup-patent-metadata', { method: 'POST', token: owner.token, body: { patentNumber: 'US3684617' } });
+  if (lookedUp.response.ok && !lookedUp.data.suggestions?.category_ids?.includes('20000000-0000-4000-8000-000000000002')) {
+    // Google Patents occasionally returns an incomplete edge-cached HTML page;
+    // exercise the full endpoint once more before failing the integration test.
+    lookedUp = await request('/functions/v1/lookup-patent-metadata', { method: 'POST', token: owner.token, body: { patentNumber: 'US3684617' } });
+  }
   assert.equal(lookedUp.response.status, 200, JSON.stringify(lookedUp.data));
   assert.equal(lookedUp.data.metadata.patent_number, 'US3684617A');
   assert.equal(lookedUp.data.metadata.title, 'Curable epoxy resin/acrylic resin mixtures');
   assert.equal(lookedUp.data.metadata.publication_date, '1972-08-15');
+  assert.ok(Array.isArray(lookedUp.data.suggestions.category_ids));
+  assert.ok(lookedUp.data.suggestions.category_ids.includes('20000000-0000-4000-8000-000000000002'), 'Coating should be suggested from the abstract');
+  assert.ok(lookedUp.data.suggestions.category_ids.includes('20000000-0000-4000-8000-000000000003'), 'Adhesive should be suggested from the abstract');
+  assert.ok(Array.isArray(lookedUp.data.suggestions.purpose_ids));
+  assert.ok(Array.isArray(lookedUp.data.suggestions.chemicals));
+  assert.ok(lookedUp.data.suggestions.details.categories.every((item) => item.evidence && item.confidence >= 0.8));
+  const dgebaLookup = lookedUp.data.suggestions.chemicals.find((item) => item.chemical_id === '40000000-0000-4000-8000-000000000002');
+  assert.ok(dgebaLookup, 'PubChem synonym should map “diglycidyl ether of bisphenol A” to DGEBA');
+  assert.equal(dgebaLookup.role_id, '10000000-0000-4000-8000-000000000001');
   const applicationLookup = await request('/functions/v1/lookup-patent-metadata', { method: 'POST', token: owner.token, body: { patentNumber: 'US20210355267A1' } });
   assert.equal(applicationLookup.response.status, 200, JSON.stringify(applicationLookup.data));
   assert.equal(applicationLookup.data.metadata.publication_date, '2021-11-18');
-  const patent = await request('/rest/v1/patents?select=id', { method: 'POST', token: owner.token, body: { owner_user_id: owner.id, title: 'AI E2E patent', patent_number: 'QA-AI-001', country_code: 'US' } });
+  assert.ok(applicationLookup.data.suggestions && Array.isArray(applicationLookup.data.suggestions.chemicals));
+  assert.ok(applicationLookup.data.suggestions.category_ids.includes('20000000-0000-4000-8000-000000000002'), 'Coating example should be suggested without using unrelated background text');
+  const applicationIpda = applicationLookup.data.suggestions.chemicals.find((item) => item.chemical_id === '40000000-0000-4000-8000-000000000001');
+  assert.equal(applicationIpda?.role_id, '10000000-0000-4000-8000-000000000002', 'IPDA must not inherit the nearby epoxy-resin role');
+  const productLookup = await request('/functions/v1/lookup-patent-metadata', { method: 'POST', token: owner.token, body: { patentNumber: 'US6013755A' } });
+  assert.equal(productLookup.response.status, 200, JSON.stringify(productLookup.data));
+  const vestamin = productLookup.data.suggestions.commercial_products.find((item) => item.commercial_product_id === '60000000-0000-4000-8000-000000000001');
+  assert.ok(vestamin, 'VESTAMIN IPD should be returned as a commercial product, not collapsed into a chemical string');
+  assert.equal(vestamin.role_id, '10000000-0000-4000-8000-000000000002');
+  const patent = await request('/rest/v1/patents?select=id', { method: 'POST', token: owner.token, body: { owner_user_id: owner.id, title: 'AI E2E patent', patent_number: 'QA-AI-001', country_code: 'US', abstract_text: 'Original English abstract.' } });
   assert.equal(patent.response.status, 201, JSON.stringify(patent.data));
   const patentId = patent.data[0].id;
   const path = `${owner.id}/${patentId}/${randomUUID()}.pdf`;
@@ -126,20 +183,29 @@ try {
   const metadata = await request(`/rest/v1/patents?id=eq.${patentId}`, { method: 'PATCH', token: owner.token, body: { pdf_storage_path: path, pdf_original_filename: 'ai-e2e.pdf', pdf_size_bytes: pdf.length, pdf_mime_type: 'application/pdf' } });
   assert.equal(metadata.response.status, 204, JSON.stringify(metadata.data));
 
-  const analyzed = await request('/functions/v1/analyze-patent', { method: 'POST', token: owner.token, body: { patentId } });
+  const analyzed = await request('/functions/v1/analyze-patent', { method: 'POST', token: owner.token, body: { patentId, preferGemini: true, allowGeminiFallback: true, allowOpenAiFallback: false } });
   assert.equal(analyzed.response.status, 200, JSON.stringify(analyzed.data));
   assert.equal(analyzed.data.status, 'REVIEW_REQUIRED');
   assert.equal(analyzed.data.suggestionCount, 5);
   assert.equal(analyzed.data.suppressedCount, 1);
+  assert.equal(analyzed.data.provider, 'gemini');
+  assert.equal(analyzed.data.model, 'gemini-3.5-flash-lite');
   assert.equal(mockAttempts, 2);
+  const translatedPatent = await request(`/rest/v1/patents?id=eq.${patentId}&select=abstract_text,user_summary`, { token: owner.token });
+  assert.equal(translatedPatent.data[0].abstract_text, 'Original English abstract.');
+  assert.equal(translatedPatent.data[0].user_summary, 'Örnek abstractın Türkçe çevirisi.');
   const suggestions = await request(`/rest/v1/ai_analysis_suggestions?patent_id=eq.${patentId}&select=*`, { token: owner.token });
   assert.equal(suggestions.response.status, 200);
   assert.equal(suggestions.data.length, 5);
   const ipda = suggestions.data.find((item) => item.label === 'IPDA');
   assert.ok(ipda?.matched_chemical_id);
   assert.ok(ipda?.matched_role_id);
-  const run = await request(`/rest/v1/ai_analysis_runs?id=eq.${analyzed.data.runId}&select=prompt_version,result_json`, { token: owner.token });
-  assert.equal(run.data[0].prompt_version, 'patent-review-tr-v3');
+  const run = await request(`/rest/v1/ai_analysis_runs?id=eq.${analyzed.data.runId}&select=prompt_version,model,result_json`, { token: owner.token });
+  assert.equal(run.data[0].prompt_version, 'patent-review-tr-v5');
+  assert.equal(run.data[0].model, 'gemini:gemini-3.5-flash-lite');
+  assert.equal(run.data[0].result_json.examples[0].composition[1].component, 'IPDA');
+  assert.equal(run.data[0].result_json.examples[0].production_steps[1].conditions[0], '80 °C');
+  assert.equal(run.data[0].result_json.examples[0].test_results[0].method, 'ASTM D4541');
   assert.ok(run.data[0].result_json.warnings.some((warning) => warning.includes('1 düşük güvenli')));
 
   const forbidden = await request('/functions/v1/review-ai-suggestion', { method: 'POST', token: intruder.token, body: { suggestionId: ipda.id, decision: 'ACCEPTED' } });
@@ -147,16 +213,45 @@ try {
   const accepted = await request('/functions/v1/review-ai-suggestion', { method: 'POST', token: owner.token, body: { suggestionId: ipda.id, decision: 'ACCEPTED' } });
   assert.equal(accepted.response.status, 200, JSON.stringify(accepted.data));
   assert.equal(accepted.data.status, 'ACCEPTED');
+  assert.equal(accepted.data.learningDecision, 'ACCEPTED');
   const materials = await request(`/rest/v1/patent_chemicals?patent_id=eq.${patentId}&select=chemical_id,user_confirmed,source_type`, { token: owner.token });
   assert.equal(materials.data.length, 1);
   assert.equal(materials.data[0].user_confirmed, true);
   assert.equal(materials.data[0].source_type, 'AI');
 
+  const productSuggestion = suggestions.data.find((item) => item.label === 'VESTAMIN IPD');
+  assert.ok(productSuggestion, 'Commercial product suggestion must be available for correction learning');
+  const corrected = await request('/functions/v1/review-ai-suggestion', { method: 'POST', token: owner.token, body: { suggestionId: productSuggestion.id, decision: 'REJECTED', correction: 'IPDA bazlı ticari sertleştirici' } });
+  assert.equal(corrected.response.status, 200, JSON.stringify(corrected.data));
+  assert.equal(corrected.data.learningDecision, 'CORRECTED');
+  assert.equal(corrected.data.resolvedLabel, 'IPDA bazlı ticari sertleştirici');
+  const feedback = await request('/rest/v1/ai_learning_feedback?select=observed_label,decision,resolved_label&order=observed_label', { token: owner.token });
+  assert.equal(feedback.response.status, 200, JSON.stringify(feedback.data));
+  assert.equal(feedback.data.length, 2);
+  assert.ok(feedback.data.some((item) => item.observed_label === 'IPDA' && item.decision === 'ACCEPTED'));
+  assert.ok(feedback.data.some((item) => item.observed_label === 'VESTAMIN IPD' && item.decision === 'CORRECTED' && item.resolved_label === 'IPDA bazlı ticari sertleştirici'));
+  const intruderFeedback = await request('/rest/v1/ai_learning_feedback?select=id', { token: intruder.token });
+  assert.deepEqual(intruderFeedback.data, []);
+
+  const learnedPatent = await request('/rest/v1/patents?select=id', { method: 'POST', token: owner.token, body: { owner_user_id: owner.id, title: 'Learning E2E patent', patent_number: 'QA-AI-002', country_code: 'EP' } });
+  assert.equal(learnedPatent.response.status, 201, JSON.stringify(learnedPatent.data));
+  const learnedPatentId = learnedPatent.data[0].id;
+  const learnedPath = `${owner.id}/${learnedPatentId}/${randomUUID()}.pdf`;
+  const learnedUpload = await request(`/storage/v1/object/patent-pdfs/${learnedPath}`, { method: 'POST', token: owner.token, body: pdf, contentType: 'application/pdf' });
+  assert.ok(learnedUpload.response.ok, JSON.stringify(learnedUpload.data));
+  const learnedMetadata = await request(`/rest/v1/patents?id=eq.${learnedPatentId}`, { method: 'PATCH', token: owner.token, body: { pdf_storage_path: learnedPath, pdf_original_filename: 'learning-e2e.pdf', pdf_size_bytes: pdf.length, pdf_mime_type: 'application/pdf' } });
+  assert.equal(learnedMetadata.response.status, 204, JSON.stringify(learnedMetadata.data));
+  const learnedAnalysis = await request('/functions/v1/analyze-patent', { method: 'POST', token: owner.token, body: { patentId: learnedPatentId, preferGemini: true, allowGeminiFallback: true, allowOpenAiFallback: false } });
+  assert.equal(learnedAnalysis.response.status, 200, JSON.stringify(learnedAnalysis.data));
+  assert.equal(learnedAnalysis.data.model, 'gemini-3.7-flash');
+  assert.match(mockPrompts.at(-1), /IPDA bazlı ticari sertleştirici/);
+  assert.match(mockPrompts.at(-1), /mevcut kimyasal\/ticari ürün kataloğunu değiştirdiğini varsayma/);
+
   const deletedOwner = await request('/functions/v1/delete-account', { method: 'POST', token: owner.token, body: {} });
   assert.equal(deletedOwner.response.status, 200, JSON.stringify(deletedOwner.data));
   assert.equal(deletedOwner.data.deleted, true);
   owner = null;
-  console.log('EDGE_E2E_PASS metadata=US3684617A analysis=REVIEW_REQUIRED suggestions=5 suppressed=1 retry=passed cross_user=blocked accepted=IPDA account_deleted=true');
+  console.log('EDGE_E2E_PASS metadata=US3684617A gemini_fallback=passed tables=v4 suggestions=5 suppressed=1 cross_user=blocked learning=accepted+corrected+reused account_deleted=true');
 } finally {
   for (const user of [owner, intruder]) {
     if (user) await request(`/auth/v1/admin/users/${user.id}`, { method: 'DELETE', key: serviceKey, token: serviceKey });

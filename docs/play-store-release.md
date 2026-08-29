@@ -33,13 +33,13 @@ Validate these answers against the final production configuration rather than co
 - Account data: e-mail address and optional display name, used for account management/app functionality.
 - User content: uploaded patent PDFs, notes, tags, metadata, classifications, and optional AI analysis results.
 - Files are stored privately in Supabase; data is encrypted in transit.
-- AI processing is user-initiated. The selected patent PDF is sent to OpenAI as a service provider through a short-lived signed URL with response storage disabled.
+- Patent analysis is user-initiated. The selected PDF is transferred to Gemini only through a secured Supabase Edge Function; provider and service-role keys never enter the Android bundle.
 - Data is not used for advertising or sold by the application.
 - In-app deletion exists under **Hesap ve güvenlik** and removes Auth, database, AI-analysis, and private PDF data.
 - Google's external account-deletion link can use `https://patentory.vercel.app/delete-account`; signed-in users can also delete immediately from web or Android settings.
 
 ## External blockers
 
-- OpenAI API billing/quota must be active for live AI output; all manual workflows remain available without it.
+- A Gemini API key and available Gemini quota are required for live PDF analysis.
 - The legal developer/entity name and public support e-mail are required for the privacy policy and Play listing.
 - Play Console declarations and production rollout remain account-owner actions.

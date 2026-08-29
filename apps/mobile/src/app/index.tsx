@@ -5,6 +5,7 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
+  Image,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -42,7 +43,7 @@ export default function HomeScreen() {
 function LoadingScreen() {
   return (
     <View style={styles.loadingScreen}>
-      <View style={styles.logo}><Text style={styles.logoText}>P</Text></View>
+      <Image accessibilityLabel="Patentory" source={require('../../assets/images/patentory-icon-v3.png')} style={styles.logo} />
       <ActivityIndicator color={palette.amber} />
     </View>
   );
@@ -97,7 +98,7 @@ function AuthScreen() {
       style={styles.authScreen}
     >
       <View style={styles.authBrand}>
-        <View style={styles.logo}><Text style={styles.logoText}>P</Text></View>
+        <Image accessibilityLabel="Patentory" source={require('../../assets/images/patentory-icon-v3.png')} style={styles.logo} />
         <Text style={styles.authEyebrow}>MATERIALS INTELLIGENCE</Text>
         <Text style={styles.authTitle}>Patentory</Text>
         <Text style={styles.authCopy}>
@@ -202,9 +203,12 @@ function LibraryScreen({ userId }: { userId: string }) {
   return (
     <SafeAreaView style={styles.libraryScreen}>
       <View style={styles.libraryHeader}>
-        <View>
-          <Text style={styles.libraryEyebrow}>AR-GE ARŞİVİNİZ</Text>
-          <Text style={styles.libraryTitle}>Patent kütüphanesi</Text>
+        <View style={styles.libraryBrand}>
+          <Image accessibilityLabel="Patentory" source={require('../../assets/images/patentory-icon-v3.png')} style={styles.libraryLogo} />
+          <View>
+            <Text style={styles.libraryEyebrow}>AR-GE ARŞİVİNİZ</Text>
+            <Text style={styles.libraryTitle}>Patent kütüphanesi</Text>
+          </View>
         </View>
         <Pressable onPress={() => router.push('/settings')} style={styles.profileButton}>
           <Text style={styles.profileButtonText}>CS</Text>
@@ -291,8 +295,7 @@ function LibraryScreen({ userId }: { userId: string }) {
 
 const styles = StyleSheet.create({
   loadingScreen: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 22, backgroundColor: palette.background },
-  logo: { width: 54, height: 54, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: palette.borderStrong, borderRadius: 18, backgroundColor: palette.surface },
-  logoText: { color: palette.text, fontSize: 23, fontWeight: '500' },
+  logo: { width: 58, height: 58, borderRadius: 18 },
   authScreen: { flex: 1, justifyContent: 'flex-end', backgroundColor: palette.background },
   authBrand: { paddingHorizontal: 28, paddingBottom: 36 },
   authEyebrow: { marginTop: 28, color: palette.amber, fontSize: 11, letterSpacing: 1.8, fontWeight: '700' },
@@ -306,6 +309,8 @@ const styles = StyleSheet.create({
   authSwitch: { paddingVertical: 8, color: '#B8C8F4', textAlign: 'center', fontSize: 13, fontWeight: '600' },
   libraryScreen: { flex: 1, backgroundColor: palette.background },
   libraryHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: 18, paddingBottom: 16, backgroundColor: palette.background },
+  libraryBrand: { minWidth: 0, flex: 1, flexDirection: 'row', alignItems: 'center', gap: 11 },
+  libraryLogo: { width: 38, height: 38, borderRadius: 12 },
   libraryEyebrow: { color: palette.amber, fontSize: 9, letterSpacing: 1.4, fontWeight: '800' },
   libraryTitle: { marginTop: 4, color: palette.text, fontSize: 30, fontWeight: '600' },
   profileButton: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center', borderRadius: 15, backgroundColor: palette.surfaceRaised, borderWidth: 1, borderColor: palette.borderStrong },

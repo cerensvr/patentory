@@ -13,7 +13,7 @@ const anonKey = local.ANON_KEY;
 const serviceKey = local.SERVICE_ROLE_KEY;
 
 const analysis = {
-  patent_metadata: { title: 'AI E2E patent', patent_number: 'QA-AI-001', country_code: 'US', publication_date: '2024-01-15', assignee: 'Example Materials', abstract: 'Örnek abstractın Türkçe çevirisi.' },
+  patent_metadata: { title: 'AI E2E patent', patent_number: 'QA-AI-001', country_code: 'US', publication_date: '2024-01-15', assignee: 'Example Materials', abstract_tr: 'Örnek abstractın Türkçe çevirisi.' },
   document_language: 'English',
   executive_summary: 'DGEBA ve IPDA içeren, kimyasal dayanımı ve yapışması yüksek bir epoksi kaplama tarifidir.',
   technical_problem: 'Yüksek yapışma ve kimyasal dayanım sağlayan kaplama ihtiyacı.',
@@ -21,7 +21,7 @@ const analysis = {
   novelty_points: ['DGEBA ve IPDA kombinasyonu'],
   advantages: ['Yüksek yapışma', 'Kimyasal dayanım'],
   limitations_and_risks: ['Ölçek büyütme verisi bulunmuyor'],
-  independent_claims: [{ claim_number: '1', summary: 'DGEBA ve IPDA içeren epoksi kaplama.', evidence_quote: 'comprising DGEBA and IPDA', page: 1 }],
+  independent_claims: [{ claim_number: '1', summary_tr: 'DGEBA ve IPDA içeren epoksi kaplama.', evidence_quote: 'comprising DGEBA and IPDA', page: 1 }],
   chemicals: [
     { raw_name: 'DGEBA', canonical_candidate: 'Bisphenol A diglycidyl ether', abbreviation: 'DGEBA', cas_number: null, role: 'Epoxy Resin', purpose: 'Binder', confidence: 0.98, evidence_quote: 'bisphenol A diglycidyl ether (DGEBA)', page: 1 },
     { raw_name: 'IPDA', canonical_candidate: 'Isophorone diamine', abbreviation: 'IPDA', cas_number: null, role: 'Hardener', purpose: 'Curing agent', confidence: 0.99, evidence_quote: 'isophorone diamine (IPDA) as a hardener', page: 1 },
@@ -31,24 +31,24 @@ const analysis = {
   application_categories: [{ name: 'Coating', confidence: 0.97, evidence_quote: 'epoxy coating composition', page: 1 }, { name: 'Unsupported guess', confidence: 0.4, evidence_quote: 'guess', page: null }],
   technical_purposes: [{ name: 'High Adhesion', confidence: 0.96, evidence_quote: 'provides high adhesion', page: 1 }],
   process_steps: ['DGEBA ve IPDA karıştırılır', '80 °C’de 2 saat kürlenir'],
-  performance_metrics: [{ name: 'Cure temperature', value: '80', unit: '°C', context: 'Example 1', page: 1 }],
+  performance_metrics: [{ name_tr: 'Kürlenme sıcaklığı', value: '80', unit: '°C', context_tr: 'Örnek 1', page: 1 }],
   examples: [{
     example_number: 'Örnek 1',
-    summary: '100 kısım DGEBA ve 25 kısım IPDA içeren reçete.',
+    summary_tr: '100 kısım DGEBA ve 25 kısım IPDA içeren reçete.',
     chemicals: ['DGEBA', 'IPDA'],
-    conditions: ['80 °C', '2 saat'],
+    conditions_tr: ['80 °C', '2 saat'],
     composition: [
-      { component: 'DGEBA', amount: '100', unit: 'phr', basis: 'reçine bazında', role: 'Epoksi reçine', page: 1 },
-      { component: 'IPDA', amount: '25', unit: 'phr', basis: 'reçine bazında', role: 'Sertleştirici', page: 1 },
+      { component: 'DGEBA', amount: '100', unit: 'phr', basis_tr: 'reçine bazında', role_tr: 'Epoksi reçine', page: 1 },
+      { component: 'IPDA', amount: '25', unit: 'phr', basis_tr: 'reçine bazında', role_tr: 'Sertleştirici', page: 1 },
     ],
     production_steps: [
-      { step_number: '1', instruction: 'DGEBA ile IPDA karıştırılır.', conditions: ['23 °C'], page: 1 },
-      { step_number: '2', instruction: 'Karışım kürlenir.', conditions: ['80 °C', '2 saat'], page: 1 },
+      { step_number: '1', instruction_tr: 'DGEBA ile IPDA karıştırılır.', conditions_tr: ['23 °C'], page: 1 },
+      { step_number: '2', instruction_tr: 'Karışım kürlenir.', conditions_tr: ['80 °C', '2 saat'], page: 1 },
     ],
     test_results: [
-      { test_name: 'Çekme yapışması', method: 'ASTM D4541', result: '12', unit: 'MPa', specimen: 'Çelik panel', page: 1 },
+      { test_name_tr: 'Çekme yapışması', method: 'ASTM D4541', result_tr: '12', unit: 'MPa', specimen_tr: 'Çelik panel', page: 1 },
     ],
-    outcome: 'Kürlenmiş kaplama',
+    outcome_tr: 'Kürlenmiş kaplama',
     page: 1,
   }],
   warnings: ['Bu çıktı hukuki görüş değildir'],
@@ -74,6 +74,9 @@ const mockServer = http.createServer((request, response) => {
     assert.ok(payload.response_format.schema.properties.examples.items.properties.composition);
     assert.ok(payload.response_format.schema.properties.examples.items.properties.production_steps);
     assert.ok(payload.response_format.schema.properties.examples.items.properties.test_results);
+    assert.ok(payload.response_format.schema.properties.patent_metadata.properties.abstract_tr);
+    assert.ok(payload.response_format.schema.properties.examples.items.properties.summary_tr);
+    assert.ok(payload.response_format.schema.properties.examples.items.properties.test_results.items.properties.test_name_tr);
     assert.equal(payload.generation_config.max_output_tokens, 18000);
     assert.equal(JSON.stringify(payload).includes('@example.test'), false);
     mockPrompts.push(payload.input[1].text);

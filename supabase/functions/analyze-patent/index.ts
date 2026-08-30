@@ -124,11 +124,15 @@ const analysisSchema = {
   properties: {
     patent_metadata: {
       type: 'object', additionalProperties: false,
-      required: ['title', 'patent_number', 'country_code', 'publication_date', 'assignee', 'abstract'],
+      required: ['title', 'patent_number', 'country_code', 'publication_date', 'assignee', 'abstract_tr'],
       properties: {
         title: { type: ['string', 'null'] }, patent_number: { type: ['string', 'null'] },
         country_code: { type: ['string', 'null'] }, publication_date: { type: ['string', 'null'] },
-        assignee: { type: ['string', 'null'] }, abstract: { type: ['string', 'null'] },
+        assignee: { type: ['string', 'null'] },
+        abstract_tr: {
+          type: ['string', 'null'],
+          description: 'Belgedeki abstract bölümünün eksiksiz ve sadık Türkçe çevirisi. Kaynak metni İngilizce bırakma; kimyasal ve ticari adları değiştirme.',
+        },
       },
     },
     document_language: { type: 'string' },
@@ -142,9 +146,10 @@ const analysisSchema = {
       type: 'array',
       items: {
         type: 'object', additionalProperties: false,
-        required: ['claim_number', 'summary', 'evidence_quote', 'page'],
+        required: ['claim_number', 'summary_tr', 'evidence_quote', 'page'],
         properties: {
-          claim_number: { type: 'string' }, summary: { type: 'string' },
+          claim_number: { type: 'string' },
+          summary_tr: { type: 'string', description: 'Bağımsız istemin akıcı teknik Türkçe özeti.' },
           evidence_quote: { type: 'string' }, page: { type: ['integer', 'null'] },
         },
       },
@@ -179,15 +184,21 @@ const analysisSchema = {
     },
     application_categories: { $ref: '#/$defs/evidenceList' },
     technical_purposes: { $ref: '#/$defs/evidenceList' },
-    process_steps: { type: 'array', items: { type: 'string' } },
+    process_steps: {
+      type: 'array',
+      description: 'Genel proses adımlarını teknik Türkçeyle yaz; kimyasal adları, sayıları ve birimleri koru.',
+      items: { type: 'string' },
+    },
     performance_metrics: {
       type: 'array',
       items: {
         type: 'object', additionalProperties: false,
-        required: ['name', 'value', 'unit', 'context', 'page'],
+        required: ['name_tr', 'value', 'unit', 'context_tr', 'page'],
         properties: {
-          name: { type: 'string' }, value: { type: 'string' }, unit: { type: ['string', 'null'] },
-          context: { type: 'string' }, page: { type: ['integer', 'null'] },
+          name_tr: { type: 'string', description: 'Ölçüm veya performans adını teknik Türkçeyle yaz; standart kodunu koru.' },
+          value: { type: 'string' }, unit: { type: ['string', 'null'] },
+          context_tr: { type: 'string', description: 'Sonucun bağlamını teknik Türkçeyle yaz; örnek numarası, sayılar ve birimleri koru.' },
+          page: { type: ['integer', 'null'] },
         },
       },
     },
@@ -195,20 +206,27 @@ const analysisSchema = {
       type: 'array',
       items: {
         type: 'object', additionalProperties: false,
-        required: ['example_number', 'summary', 'chemicals', 'conditions', 'composition', 'production_steps', 'test_results', 'outcome', 'page'],
+        required: ['example_number', 'summary_tr', 'chemicals', 'conditions_tr', 'composition', 'production_steps', 'test_results', 'outcome_tr', 'page'],
         properties: {
-          example_number: { type: 'string' }, summary: { type: 'string' },
+          example_number: { type: 'string' },
+          summary_tr: { type: 'string', description: 'Örneğin akıcı teknik Türkçe özeti.' },
           chemicals: { type: 'array', items: { type: 'string' } },
-          conditions: { type: 'array', items: { type: 'string' } },
+          conditions_tr: {
+            type: 'array',
+            description: 'Koşulları teknik Türkçeyle yaz; sayıları, sıcaklıkları, süreleri ve birimleri aynen koru.',
+            items: { type: 'string' },
+          },
           composition: {
             type: 'array',
             items: {
               type: 'object', additionalProperties: false,
-              required: ['component', 'amount', 'unit', 'basis', 'role', 'page'],
+              required: ['component', 'amount', 'unit', 'basis_tr', 'role_tr', 'page'],
               properties: {
                 component: { type: 'string' }, amount: { type: ['string', 'null'] },
-                unit: { type: ['string', 'null'] }, basis: { type: ['string', 'null'] },
-                role: { type: ['string', 'null'] }, page: { type: ['integer', 'null'] },
+                unit: { type: ['string', 'null'] },
+                basis_tr: { type: ['string', 'null'], description: 'Miktar bazını teknik Türkçeyle yaz.' },
+                role_tr: { type: ['string', 'null'], description: 'Bileşenin örnekteki rolünü teknik Türkçeyle yaz.' },
+                page: { type: ['integer', 'null'] },
               },
             },
           },
@@ -216,10 +234,15 @@ const analysisSchema = {
             type: 'array',
             items: {
               type: 'object', additionalProperties: false,
-              required: ['step_number', 'instruction', 'conditions', 'page'],
+              required: ['step_number', 'instruction_tr', 'conditions_tr', 'page'],
               properties: {
-                step_number: { type: 'string' }, instruction: { type: 'string' },
-                conditions: { type: 'array', items: { type: 'string' } },
+                step_number: { type: 'string' },
+                instruction_tr: { type: 'string', description: 'Üretim adımını teknik Türkçeyle yaz.' },
+                conditions_tr: {
+                  type: 'array',
+                  description: 'Adım koşullarını teknik Türkçeyle yaz; sayıları ve birimleri koru.',
+                  items: { type: 'string' },
+                },
                 page: { type: ['integer', 'null'] },
               },
             },
@@ -228,15 +251,19 @@ const analysisSchema = {
             type: 'array',
             items: {
               type: 'object', additionalProperties: false,
-              required: ['test_name', 'method', 'result', 'unit', 'specimen', 'page'],
+              required: ['test_name_tr', 'method', 'result_tr', 'unit', 'specimen_tr', 'page'],
               properties: {
-                test_name: { type: 'string' }, method: { type: ['string', 'null'] },
-                result: { type: 'string' }, unit: { type: ['string', 'null'] },
-                specimen: { type: ['string', 'null'] }, page: { type: ['integer', 'null'] },
+                test_name_tr: { type: 'string', description: 'Test adını teknik Türkçeyle yaz; ASTM/ISO/DIN kodunu koru.' },
+                method: { type: ['string', 'null'] },
+                result_tr: { type: 'string', description: 'Sonucu Türkçeyle yaz; sayısal değeri değiştirme.' },
+                unit: { type: ['string', 'null'] },
+                specimen_tr: { type: ['string', 'null'], description: 'Numune açıklamasını teknik Türkçeyle yaz.' },
+                page: { type: ['integer', 'null'] },
               },
             },
           },
-          outcome: { type: 'string' }, page: { type: ['integer', 'null'] },
+          outcome_tr: { type: 'string', description: 'Örneğin sonucunu teknik Türkçeyle yaz.' },
+          page: { type: ['integer', 'null'] },
         },
       },
     },
@@ -358,7 +385,7 @@ function sanitizeAnalysis(value: unknown): Analysis {
   const claims = (Array.isArray(source.independent_claims) ? source.independent_claims : []).map((value) => {
     const item = record(value);
     return {
-      claim_number: cleanText(item.claim_number, 40), summary: cleanText(item.summary),
+      claim_number: cleanText(item.claim_number, 40), summary: cleanText(item.summary_tr ?? item.summary),
       evidence_quote: cleanText(item.evidence_quote, 700), page: cleanPage(item.page),
     };
   }).filter((item) => item.claim_number && item.summary).slice(0, 50);
@@ -386,7 +413,10 @@ function sanitizeAnalysis(value: unknown): Analysis {
   }).filter((item) => item.name).slice(0, 80), (item) => item.name);
   const metrics = (Array.isArray(source.performance_metrics) ? source.performance_metrics : []).map((value) => {
     const item = record(value);
-    return { name: cleanText(item.name, 240), value: cleanText(item.value, 160), unit: nullableText(item.unit, 80), context: cleanText(item.context, 700), page: cleanPage(item.page) };
+    return {
+      name: cleanText(item.name_tr ?? item.name, 240), value: cleanText(item.value, 160),
+      unit: nullableText(item.unit, 80), context: cleanText(item.context_tr ?? item.context, 700), page: cleanPage(item.page),
+    };
   }).filter((item) => item.name && item.value).slice(0, 150);
   const examples = (Array.isArray(source.examples) ? source.examples : []).map((value) => {
     const item = record(value);
@@ -394,30 +424,30 @@ function sanitizeAnalysis(value: unknown): Analysis {
       const row = record(value);
       return {
         component: cleanText(row.component, 300), amount: nullableText(row.amount, 120),
-        unit: nullableText(row.unit, 80), basis: nullableText(row.basis, 160),
-        role: nullableText(row.role, 160), page: cleanPage(row.page),
+        unit: nullableText(row.unit, 80), basis: nullableText(row.basis_tr ?? row.basis, 160),
+        role: nullableText(row.role_tr ?? row.role, 160), page: cleanPage(row.page),
       };
     }).filter((row) => row.component).slice(0, 250);
     const productionSteps = (Array.isArray(item.production_steps) ? item.production_steps : []).map((value) => {
       const row = record(value);
       return {
-        step_number: cleanText(row.step_number, 40), instruction: cleanText(row.instruction, 1_500),
-        conditions: cleanList(row.conditions, 30, 300), page: cleanPage(row.page),
+        step_number: cleanText(row.step_number, 40), instruction: cleanText(row.instruction_tr ?? row.instruction, 1_500),
+        conditions: cleanList(row.conditions_tr ?? row.conditions, 30, 300), page: cleanPage(row.page),
       };
     }).filter((row) => row.instruction).slice(0, 120);
     const testResults = (Array.isArray(item.test_results) ? item.test_results : []).map((value) => {
       const row = record(value);
       return {
-        test_name: cleanText(row.test_name, 240), method: nullableText(row.method, 240),
-        result: cleanText(row.result, 240), unit: nullableText(row.unit, 80),
-        specimen: nullableText(row.specimen, 240), page: cleanPage(row.page),
+        test_name: cleanText(row.test_name_tr ?? row.test_name, 240), method: nullableText(row.method, 240),
+        result: cleanText(row.result_tr ?? row.result, 240), unit: nullableText(row.unit, 80),
+        specimen: nullableText(row.specimen_tr ?? row.specimen, 240), page: cleanPage(row.page),
       };
     }).filter((row) => row.test_name && row.result).slice(0, 250);
     return {
-      example_number: cleanText(item.example_number, 80), summary: cleanText(item.summary),
-      chemicals: cleanList(item.chemicals, 80, 240), conditions: cleanList(item.conditions, 80, 240),
+      example_number: cleanText(item.example_number, 80), summary: cleanText(item.summary_tr ?? item.summary),
+      chemicals: cleanList(item.chemicals, 80, 240), conditions: cleanList(item.conditions_tr ?? item.conditions, 80, 240),
       composition, production_steps: productionSteps, test_results: testResults,
-      outcome: cleanText(item.outcome), page: cleanPage(item.page),
+      outcome: cleanText(item.outcome_tr ?? item.outcome), page: cleanPage(item.page),
     };
   }).filter((item) => item.example_number || item.summary).slice(0, 80);
 
@@ -426,7 +456,7 @@ function sanitizeAnalysis(value: unknown): Analysis {
       title: nullableText(metadata.title), patent_number: nullableText(metadata.patent_number, 120),
       country_code: nullableText(metadata.country_code, 8)?.toUpperCase() ?? null,
       publication_date: cleanDate(metadata.publication_date), assignee: nullableText(metadata.assignee),
-      abstract: nullableText(metadata.abstract, 8_000),
+      abstract: nullableText(metadata.abstract_tr ?? metadata.abstract, 8_000),
     },
     document_language: cleanText(source.document_language, 80) || 'Belirtilmemiş',
     executive_summary: cleanText(source.executive_summary, 8_000), technical_problem: cleanText(source.technical_problem, 5_000),
@@ -516,7 +546,7 @@ function canTryNextGeminiModel(error: unknown) {
   const { prefix, code } = providerErrorCode(error);
   return prefix === 'GEMINI' && [
     '429', 'RESOURCE_EXHAUSTED', 'UNAVAILABLE', 'DEADLINE_EXCEEDED',
-    'request_timeout', 'provider_unavailable', 'response_incomplete', 'response_failed',
+    'api_error', 'request_timeout', 'provider_unavailable', 'response_incomplete', 'response_failed',
   ].includes(code);
 }
 
@@ -702,8 +732,9 @@ Kanıt ve güven kuralları:
 - Önceki teknikten yalnızca alıntılandığı için geçen kimyasalı buluşun bileşeni sayma.
 - Bağımsız istem olduğundan emin olmadığın istemi independent_claims listesine ekleme.
 - Başlık, patent numarası, ülke, yayın tarihi ve hak sahibi için yalnızca belgenin bibliyografik bölümünde açıkça bulunan verileri patent_metadata alanına yaz.
-- patent_metadata.abstract alanına belgedeki abstract'ın eksiksiz ve sadık Türkçe çevirisini yaz; özetleme, kimyasal ve ticari adları değiştirme. Abstract yoksa null kullan.
+- patent_metadata.abstract_tr alanına belgedeki abstract'ın eksiksiz ve sadık TÜRKÇE çevirisini yaz; kaynak İngilizceyse İngilizce cümleyi aynen kopyalamak hatadır. Özetleme, kimyasal ve ticari adları değiştirme. Abstract yoksa null kullan.
 - Yönetici özeti, teknik problem/çözüm, istem özetleri, örnek özetleri, üretim talimatları, test adlarının açıklayıcı kısmı ve sonuç bağlamlarını akıcı teknik Türkçeyle yaz.
+- Şemada adı _tr ile biten her alan zorunlu Türkçe içeriktir; kaynak cümleyi İngilizce bırakma.
 - Kimyasal ve ticari adları, CAS numaralarını, ASTM/ISO/DIN gibi standart kodlarını, formülasyon miktarlarını, birimleri ve sayısal değerleri aynen koru.
 - evidence_quote alanlarını kaynak belgedeki özgün dilde ve kelimesi kelimesine bırak; kanıt alıntılarını Türkçeye çevirme.
 
@@ -978,6 +1009,7 @@ Mevcut kayıt bağlamı: başlık=${patent.title ?? 'yok'}; patent numarası=${p
       RESOURCE_EXHAUSTED: 'Gemini’nin günlük veya dakikalık ücretsiz kotası doldu. Kota yenilendiğinde yeniden deneyin; manuel kütüphane çalışmaya devam eder.',
       DEADLINE_EXCEEDED: 'Gemini PDF analizi zaman aşımına uğradı. Biraz sonra yeniden deneyin.',
       UNAVAILABLE: 'Gemini servisine şu anda ulaşılamıyor. Bir süre sonra tekrar deneyin.',
+      api_error: 'Gemini modeli geçici olarak yoğun. Flash‑Lite yedeğiyle veya kısa bir süre sonra yeniden deneyin.',
       '429': 'Gemini’nin günlük veya dakikalık ücretsiz kotası doldu. Kota yenilendiğinde yeniden deneyin.',
       invalid_api_key: 'AI servis anahtarı geçersiz. Yönetici yapılandırmayı kontrol etmelidir.',
       API_KEY_INVALID: 'Gemini servis anahtarı geçersiz. Yönetici yapılandırmayı kontrol etmelidir.',
@@ -991,7 +1023,7 @@ Mevcut kayıt bağlamı: başlık=${patent.title ?? 'yok'}; patent numarası=${p
     const safeMessage = providerError
       ? (providerMessages[errorCode] ?? 'Patent tarama servisi analizi tamamlayamadı. Bir süre sonra tekrar deneyin.')
       : 'Patent analizi tamamlanamadı. Daha sonra tekrar deneyin.';
-    const retryable = ['rate_limit_exceeded', 'RESOURCE_EXHAUSTED', '429', 'DEADLINE_EXCEEDED', 'UNAVAILABLE', 'request_timeout', 'provider_unavailable', 'response_incomplete', 'response_failed'].includes(errorCode);
+    const retryable = ['rate_limit_exceeded', 'RESOURCE_EXHAUSTED', '429', 'DEADLINE_EXCEEDED', 'UNAVAILABLE', 'api_error', 'request_timeout', 'provider_unavailable', 'response_incomplete', 'response_failed'].includes(errorCode);
     const quotaCodes = ['rate_limit_exceeded', 'RESOURCE_EXHAUSTED', '429'];
     const configCodes = ['insufficient_quota', 'credit_balance_exhausted', 'billing_hard_limit_reached', 'organization_usage_limit_exceeded', 'organization_spend_limit_exceeded', 'project_spend_limit_exceeded', 'invalid_api_key', 'API_KEY_INVALID'];
     const httpStatus = quotaCodes.includes(errorCode) ? 429 : ['request_timeout', 'DEADLINE_EXCEEDED'].includes(errorCode) ? 504 : configCodes.includes(errorCode) ? 503 : 502;

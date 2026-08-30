@@ -224,7 +224,7 @@ try {
   assert.ok(ipda?.matched_chemical_id);
   assert.ok(ipda?.matched_role_id);
   const run = await request(`/rest/v1/ai_analysis_runs?id=eq.${analyzed.data.runId}&select=prompt_version,model,result_json`, { token: owner.token });
-  assert.equal(run.data[0].prompt_version, 'patent-review-tr-v6');
+  assert.equal(run.data[0].prompt_version, 'patent-review-tr-v8');
   assert.equal(run.data[0].model, 'gemini:gemini-3.5-flash-lite');
   assert.equal(run.data[0].result_json.examples[0].composition[1].component, 'IPDA');
   assert.equal(run.data[0].result_json.examples[0].production_steps[1].conditions[0], '80 °C');
@@ -278,7 +278,7 @@ try {
   assert.equal(deletedOwner.response.status, 200, JSON.stringify(deletedOwner.data));
   assert.equal(deletedOwner.data.deleted, true);
   owner = null;
-  console.log('EDGE_E2E_PASS metadata=US3684617A gemini_fallback=passed tables=v6 complete_examples=20/20 suggestions=5 suppressed=1 cross_user=blocked learning=accepted+corrected+reused account_deleted=true');
+  console.log('EDGE_E2E_PASS metadata=US3684617A gemini_fallback=passed tables=v8 complete_examples=20/20 suggestions=5 suppressed=1 cross_user=blocked learning=accepted+corrected+reused account_deleted=true');
 } finally {
   for (const user of [owner, intruder]) {
     if (user) await request(`/auth/v1/admin/users/${user.id}`, { method: 'DELETE', key: serviceKey, token: serviceKey });

@@ -6,11 +6,15 @@ const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
 };
 
-const PROMPT_VERSION = 'patent-review-tr-v6';
+const PROMPT_VERSION = 'patent-review-tr-v8';
 const MAX_PDF_BYTES = 50 * 1024 * 1024;
 const MAX_GEMINI_INLINE_PDF_BYTES = 20 * 1024 * 1024;
 const OPENAI_DEADLINE_MS = 110_000;
 const GEMINI_DEADLINE_MS = 110_000;
+// Gemini 3.7 Flash and 3.5 Flash-Lite support up to 65,536 output tokens.
+// Patent tables can be substantially larger than an ordinary text response, so
+// keep a small provider-side safety margin instead of truncating at 18k.
+const GEMINI_MAX_OUTPUT_TOKENS = 60_000;
 const MIN_ACTIONABLE_CONFIDENCE = 0.55;
 const MIN_EVIDENCE_LENGTH = 8;
 
@@ -521,6 +525,25 @@ function identifierKey(value: string) {
     .trim();
 }
 
+function turkishStructuredLabel(value: unknown, maxLength = 300) {
+  return cleanText(value, maxLength)
+    .replace(/(?:对比例|比較例|比较例|비교예|сравнительный\s+пример)/giu, 'Karşılaştırmalı Örnek ')
+    .replace(/(?:对照例|對照例|대조예|контрольный\s+пример)/giu, 'Kontrol ')
+    .replace(/(?:实施例|實施例|実施例|실시예|пример)/giu, 'Örnek ')
+    .replace(/(?:样品|樣品|試料|시료|образцы)/giu, 'Numuneler ')
+    .replace(/(?:样品|樣品|試料|시료|образец)/giu, 'Numune ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function shouldReplaceWithTurkishTranslation(value: unknown) {
+  const text = cleanText(value, 12_000);
+  if (!text) return true;
+  const foreignScriptCharacters = text.match(/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}\p{Script=Cyrillic}\p{Script=Arabic}\p{Script=Hebrew}\p{Script=Devanagari}]/gu)?.length ?? 0;
+  const latinCharacters = text.match(/\p{Script=Latin}/gu)?.length ?? 0;
+  return foreignScriptCharacters >= 8 && foreignScriptCharacters > latinCharacters / 3;
+}
+
 function uniqueByConfidence<T extends { confidence: number }>(items: T[], key: (item: T) => string) {
   const unique = new Map<string, T>();
   for (const item of items) {
@@ -595,7 +618,9 @@ function sanitizeAnalysis(value: unknown): Analysis {
     };
   }).filter((item) => item.source_name && item.standardized_name).slice(0, 250);
   const inventorySource = record(source.example_inventory);
-  const inventoryIdentifiers = cleanList(inventorySource.identifiers, 500, 80);
+  const inventoryIdentifiers = [...new Set((Array.isArray(inventorySource.identifiers) ? inventorySource.identifiers : [])
+    .map((item) => turkishStructuredLabel(item, 80))
+    .filter(Boolean))].slice(0, 500);
   const declaredCount = typeof inventorySource.declared_count === 'number'
     && Number.isInteger(inventorySource.declared_count)
     && inventorySource.declared_count > 0
@@ -609,7 +634,7 @@ function sanitizeAnalysis(value: unknown): Analysis {
     const columns = (Array.isArray(item.columns) ? item.columns : []).map((value) => {
       const column = record(value);
       return {
-        label: cleanText(column.label_tr ?? column.label, 300),
+        label: turkishStructuredLabel(column.label_tr ?? column.label, 300),
         original_label: nullableText(column.original_label, 300),
         unit: nullableText(column.unit, 100),
       };
@@ -619,7 +644,7 @@ function sanitizeAnalysis(value: unknown): Analysis {
       const rawCells = Array.isArray(row.cells_tr) ? row.cells_tr : Array.isArray(row.cells) ? row.cells : [];
       const cells = rawCells.slice(0, columns.length || 80).map((cell) => cleanCell(cell));
       while (cells.length < columns.length) cells.push(null);
-      return { row_label: cleanText(row.row_label_tr ?? row.row_label, 200), cells, page: cleanPage(row.page) };
+      return { row_label: turkishStructuredLabel(row.row_label_tr ?? row.row_label, 200), cells, page: cleanPage(row.page) };
     }).filter((row) => row.row_label || row.cells.some(Boolean)).slice(0, 500);
     return {
       title: cleanText(item.title_tr ?? item.title, 400), table_type: cleanText(item.table_type, 80),
@@ -656,7 +681,7 @@ function sanitizeAnalysis(value: unknown): Analysis {
       };
     }).filter((row) => row.test_name && row.result).slice(0, 250);
     return {
-      example_number: cleanText(item.example_number, 80), summary: cleanText(item.summary_tr ?? item.summary),
+      example_number: turkishStructuredLabel(item.example_number, 80), summary: cleanText(item.summary_tr ?? item.summary),
       chemicals: cleanList(item.chemicals, 80, 240), conditions: cleanList(item.conditions_tr ?? item.conditions, 80, 240),
       composition, production_steps: productionSteps, test_results: testResults,
       outcome: cleanText(item.outcome_tr ?? item.outcome), page: cleanPage(item.page),
@@ -973,6 +998,8 @@ Kanıt ve güven kuralları:
 - Bağımsız istem olduğundan emin olmadığın istemi independent_claims listesine ekleme.
 - Başlık, patent numarası, ülke, yayın tarihi ve hak sahibi için yalnızca belgenin bibliyografik bölümünde açıkça bulunan verileri patent_metadata alanına yaz.
 - patent_metadata.abstract_tr alanına belgedeki abstract'ın eksiksiz ve sadık TÜRKÇE çevirisini yaz; kaynak İngilizceyse İngilizce cümleyi aynen kopyalamak hatadır. Özetleme, kimyasal ve ticari adları değiştirme. Abstract yoksa null kullan.
+- Kullanıcıya gösterilen yapılandırılmış alanlarda Çince, Japonca, Korece, Rusça veya başka yabancı dil bırakma. Örnek, karşılaştırmalı örnek, kontrol ve numune kimliklerini de Türkçeleştir: ör. 实施例1 → Örnek 1, 对比例1 → Karşılaştırmalı Örnek 1, 样品1-6 → Numuneler 1-6.
+- Yabancı özgün metni yalnızca bunun için ayrılmış evidence_quote, component_original, original_label, source_name ve trade_name alanlarında koru. Bunların Türkçe karşılık alanlarını mutlaka doldur.
 - Yönetici özeti, teknik problem/çözüm, istem özetleri, örnek özetleri, üretim talimatları, test adlarının açıklayıcı kısmı ve sonuç bağlamlarını akıcı teknik Türkçeyle yaz.
 - Şemada adı _tr ile biten her alan zorunlu Türkçe içeriktir; İngilizce, Rusça, Çince, Korece veya başka bir kaynak cümleyi aynen bırakma.
 - Kimyasal ve ticari adları, CAS numaralarını, ASTM/ISO/DIN gibi standart kodlarını, formülasyon miktarlarını, birimleri ve sayısal değerleri aynen koru.
@@ -1024,6 +1051,8 @@ Sınıflandırma katalogları:
 - Her örneğin composition dizisine her bileşen için ayrı satır yaz. component_original kaynak yazımı, component_tr Türkçe/standart teknik gösterimdir. Belgede verilen miktar/aralık, özgün birim, Türkçe birim, baz (phr, ağırlıkça yüzde, mol oranı vb.), işlevsel rol ve sayfayı koru. Açıkça verilmeyen hücre için null kullan; tahmin yürütme.
 - Her örneğin production_steps dizisine karıştırma, ekleme sırası, bekletme, kalıplama, uygulama ve kürleme adımlarını doğru sırada yaz. Sıcaklık, süre, hız, basınç ve atmosfer gibi koşulları conditions içinde eksiksiz koru.
 - Her örneğin test_results dizisine test/metot, sonuç, birim, numune ve sayfayı ayrı satırlar olarak yaz. Farklı örneklerin veya numunelerin sonuçlarını birleştirme.
+- Test ve metot adlarının açıklayıcı bölümünü Türkçeye çevir; GB/T, ASTM, ISO, DIN gibi standart kodlarını aynen koru. Örn. "Band line resonator method" ifadesini "Şerit hat rezonatörü yöntemi" olarak yaz.
+- example_number, row_label_tr, label_tr, specimen_tr ve sonuç bağlamlarında Çince/Japonca/Korece/Rusça örnek etiketlerini bırakma; tamamını Türkçe gösterime dönüştür.
 - experimental_tables içinde kaynak tablonun yapısına göre karşılaştırılabilir matrisler oluştur: örnek bileşimleri ve yoğunlukları; üretim/karıştırma/kürleme prosesi; örnek bazlı test sonuçları; sıcaklık/koşula bağlı sonuçlar. Sütun başlıkları Türkçe, sayısal hücreler ve birimler kaynakla aynı olmalıdır.
 - Her kaynak tablo için tüm satır ve sütunları koru. Satır sayısını azaltma, temsilî satır seçme, aynı değeri taşıyan satırları birleştirme veya boş sonucu sıfır yapma. Kaynakta boşsa cells_tr içinde null kullan.
 - Matrislerde örnekleri mümkünse satırlarda, bileşenleri/testleri sütunlarda göster. Kaynak tablo sıcaklık gibi koşulları satırda, örnekleri sütunda veriyorsa kaynak karşılaştırma yönünü koru.
@@ -1097,10 +1126,21 @@ Mevcut kayıt bağlamı: başlık=${patent.title ?? 'yok'}; patent numarası=${p
               { type: 'text', text: prompt },
             ],
             response_format: { type: 'text', mime_type: 'application/json', schema: analysisSchema },
-            generation_config: { max_output_tokens: 18000 },
+            generation_config: {
+              max_output_tokens: GEMINI_MAX_OUTPUT_TOKENS,
+              thinking_level: 'low',
+            },
           });
           const responseStatus = cleanText(body.status, 80);
-          if (responseStatus === 'incomplete') throw new Error('GEMINI:response_incomplete:Gemini response was incomplete');
+          if (responseStatus === 'incomplete') {
+            const usage = record(body.usage);
+            console.error('GEMINI_RESPONSE_INCOMPLETE', JSON.stringify({
+              model: currentModel,
+              outputTokens: usage.total_output_tokens ?? null,
+              totalTokens: usage.total_tokens ?? null,
+            }));
+            throw new Error('GEMINI:response_incomplete:Gemini response was incomplete');
+          }
           if (responseStatus === 'failed' || responseStatus === 'cancelled') throw new Error(`GEMINI:response_${responseStatus}:Gemini response ${responseStatus}`);
           return { body, model: currentModel };
         } catch (error) {
@@ -1156,6 +1196,7 @@ PDF'yi baştan sona yeniden tara. Önce bütün Example/Örnek/Comparative/Contr
 - Bütün örnekleri (birkaç temsilî örneği değil) examples listesine yaz.
 - Bütün reçeteleri EXAMPLE_COMPOSITION_MATRIX, proses adımlarını PRODUCTION_PROCESS, test sonuçlarını TEST_RESULTS_MATRIX ve sıcaklık/koşul sonuçlarını CONDITION_RESULTS_MATRIX tablolarında tüm satır ve sütunlarıyla kur.
 - Rusça, Çince, Korece, Japonca ve diğer yabancı açıklamaları Türkçeye çevir; kimyasal ve ticari ürünlerin özgün yazımını original/source alanlarında koru.
+- Örnek, karşılaştırmalı örnek, kontrol ve numune kimliklerini de Türkçeleştir; yabancı dildeki etiketleri example_number veya tablo satırlarında bırakma.
 - Ticari ürünlerin Latin dışı adları için Latin transliterasyon kullan.
 - Sayıları, işaretleri ve birimleri değiştirme. Kaynakta boş olan hücreyi null bırak; satır birleştirme veya tahmin yapma.
 - component_standardizations içinde her yabancı bileşenin Türkçe/standart gösterimini ve işlevini yaz.
@@ -1173,7 +1214,10 @@ Yanıtı bitirmeden example_inventory ile her deney tablosundaki örnek kimlikle
                 { type: 'text', text: auditPrompt },
               ],
               response_format: { type: 'text', mime_type: 'application/json', schema: experimentalRepairSchema },
-              generation_config: { max_output_tokens: 18000 },
+              generation_config: {
+                max_output_tokens: GEMINI_MAX_OUTPUT_TOKENS,
+                thinking_level: 'low',
+              },
             });
             break;
           } catch (error) {
@@ -1313,7 +1357,9 @@ Yanıtı bitirmeden example_inventory ile her deney tablosundaki örnek kimlikle
     if (!patent.country_code && analysis.patent_metadata.country_code) patentUpdates.country_code = analysis.patent_metadata.country_code;
     if (!patent.publication_date && analysis.patent_metadata.publication_date) patentUpdates.publication_date = analysis.patent_metadata.publication_date;
     if (!patent.assignee && analysis.patent_metadata.assignee) patentUpdates.assignee = analysis.patent_metadata.assignee;
-    if (!patent.user_summary && analysis.patent_metadata.abstract) patentUpdates.user_summary = analysis.patent_metadata.abstract;
+    if (analysis.patent_metadata.abstract && shouldReplaceWithTurkishTranslation(patent.user_summary)) {
+      patentUpdates.user_summary = analysis.patent_metadata.abstract;
+    }
     await serviceClient.from('patents').update(patentUpdates).eq('id', patent.id).eq('owner_user_id', user.id);
 
     return json({ runId: run.id, status: finalStatus, suggestionCount: suggestions.length, suppressedCount, provider, model: effectiveModel, fallbackFrom });

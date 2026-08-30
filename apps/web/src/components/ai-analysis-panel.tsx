@@ -224,7 +224,7 @@ export function AiAnalysisPanel({ patentId, hasPdf, initialRun, initialSuggestio
                 <article className={`suggestion-card suggestion-type-${suggestion.suggestion_type.toLowerCase()} review-${suggestion.review_status.toLowerCase()}`} key={suggestion.id}>
                   <div className="suggestion-meta"><span>{TYPE_LABELS[suggestion.suggestion_type] ?? suggestion.suggestion_type}</span><b className={`confidence-${catalogMatched ? confidenceBand(confidence) : 'medium'}`}>{suggestionConfidenceLabel(suggestion, confidence)} · %{Math.round(confidence * 100)}</b></div>
                   <h4>{displayLabel}</h4>
-                  {displayLabel !== suggestion.label && <p className="source-label">Kaynak/katalog adı: {suggestion.label}</p>}
+                  {displayLabel !== suggestion.label && !containsForeignScript(suggestion.label) && <p className="source-label">Kaynak/katalog adı: {suggestion.label}</p>}
                   {suggestion.normalized_value && suggestion.normalized_value !== suggestion.label && (
                     <p className="normalized-value">{suggestionCanonicalLabel(suggestion)}: {suggestion.normalized_value}</p>
                   )}
@@ -315,8 +315,8 @@ function ExampleTables({ audit, componentStandardizations, examples, experimenta
       {inventory?.note && <p className="table-note">{inventory.note}</p>}
       {!!componentStandardizations.length && <AnalysisTable
         caption="Bileşenlerin Türkçe ve standart gösterimi"
-        headers={['Patentteki özgün ad / kod', 'Türkçe / standart ad', 'İşlev', 'Açıklama', 'Sayfa']}
-        rows={componentStandardizations.map((item) => [item.source_name, item.standardized_name, item.function || '—', item.description || '—', pageLabel(item.page)])}
+        headers={['Türkçe / standart ad', 'İşlev', 'Açıklama', 'Sayfa']}
+        rows={componentStandardizations.map((item) => [item.standardized_name, item.function || '—', item.description || '—', pageLabel(item.page)])}
       />}
       {experimentalTables.map((table, tableIndex) => {
         const includePage = table.rows.some((row) => row.page);
@@ -324,7 +324,7 @@ function ExampleTables({ audit, componentStandardizations, examples, experimenta
           <AnalysisTable
             caption={table.title || tableTypeTitle(table.table_type)}
             headers={[tableRowHeader(table.table_type), ...table.columns.map((column) => `${column.label}${column.unit ? ` (${column.unit})` : ''}`), ...(includePage ? ['Sayfa'] : [])]}
-            rows={table.rows.map((row) => [row.row_label, ...row.cells.map((cell) => cell ?? '—'), ...(includePage ? [pageLabel(row.page)] : [])])}
+            rows={table.rows.map((row) => [turkishStructuredLabel(row.row_label), ...row.cells.map((cell) => cell ?? '—'), ...(includePage ? [pageLabel(row.page)] : [])])}
           />
           {table.note && <p className="table-note">{table.note}</p>}
         </div>;
@@ -333,7 +333,7 @@ function ExampleTables({ audit, componentStandardizations, examples, experimenta
         caption="Örnek özeti"
         headers={['Örnek', 'Türkçe özet', 'Koşullar', 'Sonuç', 'Sayfa']}
         rows={examples.map((example) => [
-          example.example_number,
+          turkishStructuredLabel(example.example_number),
           example.summary,
           example.conditions?.join(' · ') || '—',
           example.outcome || '—',
@@ -344,7 +344,7 @@ function ExampleTables({ audit, componentStandardizations, examples, experimenta
         caption="İçerik / formülasyon tablosu"
         headers={['Örnek', 'Bileşen', 'Miktar', 'Baz', 'Rol', 'Sayfa']}
         rows={compositionRows.map((row) => [
-          row.example,
+          turkishStructuredLabel(row.example),
           <TranslatedMaterial key={`${row.example}-${row.component}-${row.page ?? 'x'}`} translated={row.component} original={row.component_original} />,
           [row.amount, row.unit].filter(Boolean).join(' ') || '—',
           row.basis || '—',
@@ -355,13 +355,13 @@ function ExampleTables({ audit, componentStandardizations, examples, experimenta
       {!!productionRows.length && !tableTypes.has('PRODUCTION_PROCESS') && <AnalysisTable
         caption="Örneklerin üretim aşamaları"
         headers={['Örnek', 'Adım', 'Türkçe üretim talimatı', 'Koşullar', 'Sayfa']}
-        rows={productionRows.map((row) => [row.example, row.step_number, row.instruction, row.conditions.join(' · ') || '—', pageLabel(row.page)])}
+        rows={productionRows.map((row) => [turkishStructuredLabel(row.example), row.step_number, row.instruction, row.conditions.join(' · ') || '—', pageLabel(row.page)])}
       />}
       {!!testRows.length && !tableTypes.has('TEST_RESULTS_MATRIX') && !tableTypes.has('CONDITION_RESULTS_MATRIX') && <AnalysisTable
         caption="Test sonuçları"
         headers={['Örnek', 'Test / metot', 'Sonuç', 'Numune', 'Sayfa']}
         rows={testRows.map((row) => [
-          row.example,
+          turkishStructuredLabel(row.example),
           [row.test_name, row.method].filter(Boolean).join(' · '),
           `${row.result}${row.unit ? ` ${row.unit}` : ''}`,
           row.specimen || '—',
@@ -493,6 +493,19 @@ const TURKISH_LABELS: Record<string, string> = {
   'high tg': 'Yüksek Tg',
 };
 
+const TURKISH_CHEMICAL_NAMES: Record<string, string> = {
+  'triethylenetetramine': 'Trietilentetramin',
+  'diethylenetriamine': 'Dietilentriamin',
+  'tetraethylenepentamine': 'Tetraetilenpentamin',
+  'bisphenol a diglycidyl ether': 'Bisfenol A diglisidil eter',
+  'butyl glycidyl ether': 'Butil glisidil eter',
+  'phenyl glycidyl ether': 'Fenil glisidil eter',
+  '1,4-butanediol diglycidyl ether': '1,4-Bütandiol diglisidil eter',
+  'hexanediol diglycidyl ether': 'Hekzandiol diglisidil eter',
+  'neopentyl glycol diglycidyl ether': 'Neopentil glikol diglisidil eter',
+  'tetrahydrophthalic acid diglycidyl ester': 'Tetrahidroftalik asit diglisidil ester',
+};
+
 function suggestionPayload(suggestion: Suggestion) {
   return suggestion.payload && typeof suggestion.payload === 'object' && !Array.isArray(suggestion.payload)
     ? suggestion.payload as Record<string, Json>
@@ -506,12 +519,30 @@ function suggestionPayloadText(suggestion: Suggestion, key: string) {
 
 function suggestionDisplayLabel(suggestion: Suggestion) {
   const translated = suggestionPayloadText(suggestion, 'display_name_tr');
-  if (translated) return translated;
+  if (translated && !containsForeignScript(translated)) return translated;
   if (suggestion.suggestion_type === 'COMMERCIAL_PRODUCT') {
     const latin = suggestionPayloadText(suggestion, 'display_name_latin');
-    if (latin) return latin;
+    if (latin && !containsForeignScript(latin)) return latin;
+  }
+  if (suggestion.suggestion_type === 'CHEMICAL' && suggestion.normalized_value) {
+    return TURKISH_CHEMICAL_NAMES[suggestion.normalized_value.toLocaleLowerCase('en-US')] ?? suggestion.normalized_value;
   }
   return TURKISH_LABELS[suggestion.label.toLocaleLowerCase('en-US')] ?? suggestion.label;
+}
+
+function containsForeignScript(value: string) {
+  return /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}\p{Script=Cyrillic}\p{Script=Arabic}\p{Script=Hebrew}\p{Script=Devanagari}]/u.test(value);
+}
+
+function turkishStructuredLabel(value: string) {
+  return value
+    .replace(/(?:对比例|比較例|比较例|비교예|сравнительный\s+пример)/giu, 'Karşılaştırmalı Örnek ')
+    .replace(/(?:对照例|對照例|대조예|контрольный\s+пример)/giu, 'Kontrol ')
+    .replace(/(?:实施例|實施例|実施例|실시예|пример)/giu, 'Örnek ')
+    .replace(/(?:样品|樣品|試料|시료|образцы)/giu, 'Numuneler ')
+    .replace(/(?:样品|樣品|試料|시료|образец)/giu, 'Numune ')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 function suggestionCatalogMatched(suggestion: Suggestion) {

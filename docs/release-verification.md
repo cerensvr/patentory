@@ -41,7 +41,7 @@ Verification date: 30 August 2026 (Europe/Istanbul)
 ## Production web verification
 
 - Canonical URL: [https://patentory.vercel.app](https://patentory.vercel.app)
-- Vercel production deployment: `dpl_CKXaCQBCVZV7GA4Lg5ruDhzRbATR`; status `READY`; canonical alias applied.
+- Vercel production deployment: `dpl_D7jFMFL7NkGEzQcqJhu6XtP1bWnK`; status `READY`; canonical alias applied.
 - The authenticated live UI shows the Patentory logo, readable dark theme, explicit `Çıkış yap` control, Gemini model status, and no “Human-reviewed AI” or “AI optional” cards.
 - `/login`, `/privacy`, and `/delete-account` are public; authenticated library, patent detail, catalog, settings, and private signed-PDF access work on the shared Supabase backend.
 - HTTPS security headers include HSTS, Content Security Policy, frame denial, MIME-sniffing protection, strict referrer policy, and a restrictive browser permissions policy.

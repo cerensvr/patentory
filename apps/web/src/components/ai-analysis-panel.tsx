@@ -91,7 +91,7 @@ export function AiAnalysisPanel({ patentId, hasPdf, initialRun, initialSuggestio
       return;
     }
     if (data?.error) {
-      setError(String(data.error));
+      setError(analysisErrorMessage(data));
       setMessage(undefined);
       return;
     }
@@ -551,8 +551,26 @@ async function responseMessage(context: unknown) {
   if (!(context instanceof Response)) return null;
   try {
     const body = await context.clone().json();
-    return typeof body?.error === 'string' ? body.error : null;
+    return analysisErrorMessage(body);
   } catch {
     return null;
   }
+}
+
+function analysisErrorMessage(body: unknown) {
+  const payload = body && typeof body === 'object' ? body as Record<string, unknown> : {};
+  const code = typeof payload.code === 'string' ? payload.code : '';
+  const messages: Record<string, string> = {
+    too_many_requests: 'Gemini geçici istek sınırına ulaştı. Yedek model de aynı Google proje kotasını kullanıyorsa tarama başlayamaz; birkaç dakika sonra yeniden deneyin.',
+    RESOURCE_EXHAUSTED: 'Gemini’nin dakikalık veya günlük kotası doldu. Kota yenilendiğinde yeniden deneyin.',
+    '429': 'Gemini’nin dakikalık veya günlük kotası doldu. Kota yenilendiğinde yeniden deneyin.',
+    DEADLINE_EXCEEDED: 'PDF analizi zaman aşımına uğradı. Biraz sonra yeniden deneyin.',
+    request_timeout: 'PDF analizi zaman aşımına uğradı. Biraz sonra yeniden deneyin.',
+    API_KEY_INVALID: 'Gemini bağlantısı yapılandırılamadı. Servis anahtarının yönetici tarafından kontrol edilmesi gerekiyor.',
+    invalid_api_key: 'AI bağlantısı yapılandırılamadı. Servis anahtarının yönetici tarafından kontrol edilmesi gerekiyor.',
+  };
+  if (messages[code]) return messages[code];
+  return typeof payload.error === 'string'
+    ? payload.error
+    : 'Patent analizi tamamlanamadı. Biraz sonra yeniden deneyin.';
 }

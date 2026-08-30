@@ -378,6 +378,69 @@ body { font-size: 15px; line-height: 1.5; }
 .synonym-more small { padding: 5px 7px; border-radius: 8px; color: #aeb4c0; background: #1d222c; font-size: 10px; overflow-wrap: anywhere; }
 
 .learning-correction { display: grid; gap: 9px; margin-top: 11px; padding: 13px; border: 1px solid #3b4659; border-radius: 13px; background: #121925; }
+
+/* Clear visual families for review findings without turning the dark UI noisy. */
+.suggestion-card { --finding-accent: #6689e8; --finding-wash: #111a2b; border-top: 3px solid var(--finding-accent); background: linear-gradient(155deg, var(--finding-wash), #0d1117 46%); }
+.suggestion-type-chemical { --finding-accent: #6689e8; --finding-wash: #111a2b; }
+.suggestion-type-commercial_product { --finding-accent: #9a78d1; --finding-wash: #1a1428; }
+.suggestion-type-application_category { --finding-accent: #bd8b4a; --finding-wash: #211a12; }
+.suggestion-type-technical_purpose { --finding-accent: #6094a4; --finding-wash: #111d23; }
+.suggestion-card .suggestion-meta > span { color: var(--finding-accent); font-weight: 750; }
+.suggestion-card blockquote { border-left-color: var(--finding-accent); background: color-mix(in srgb, var(--finding-wash) 82%, #172033); }
+.source-label { margin: 0 0 7px; color: #8993a4; font-size: 12px; line-height: 1.45; overflow-wrap: anywhere; }
+.evidence-translation { display: grid !important; gap: 4px; color: #d1d7e2 !important; }
+.evidence-translation b { color: var(--finding-accent, #8ea8ef); font-size: 10px; text-transform: uppercase; letter-spacing: .08em; }
+.source-evidence { margin-top: 9px; }
+.source-evidence summary { color: #8c97aa; font-size: 11px; cursor: pointer; }
+.source-evidence span { margin-top: 7px; color: #a9b0bc !important; }
+
+.extraction-warning { margin: 0; padding: 13px 15px; border: 1px solid #6a4b2d; border-radius: 12px; color: #d7b98d; background: #251a11; font-size: 13px; line-height: 1.55; }
+.extraction-warning strong { color: #efd0a1; }
+.table-note { margin: -6px 0 0; color: #9099a8; font-size: 12px; line-height: 1.55; }
+.dynamic-analysis-table { display: grid; gap: 10px; min-width: 0; }
+.translated-material { display: grid; gap: 3px; }
+.translated-material strong { color: #d8deea; font-size: inherit; }
+.translated-material small { color: #7f8999; font-size: 11px; }
+
+/* Comfortable research reading scale at normal browser zoom. */
+body { font-size: 16px; }
+.brand-lockup strong { font-size: 18px; }
+.brand-lockup span:last-child, .profile-chip span { font-size: 14px; }
+.main-nav a { font-size: 16px; }
+.search-box input, .filter-search input { font-size: 16px; }
+.search-box button, .upload-button { font-size: 15px; }
+.page-heading p, .form-heading > p:last-child, .detail-hero p, .catalog-heading p:last-child { font-size: 16px; }
+.metric-row span, .metric-row small { font-size: 13px; }
+.filter-heading button, .filter-heading a { font-size: 13px; }
+.filters legend { font-size: 15px; }
+.filters label { font-size: 14px; }
+.chemical-filter-options summary, .chemical-filter-options .check-row strong { font-size: 14px; }
+.chemical-filter-options summary span, .chemical-filter-options .check-row small { font-size: 12px; }
+.patent-card h2 { font-size: 24px; }
+.patent-card footer { font-size: 12px; }
+.assignee, .purpose-line p { font-size: 13px; }
+.application-tags span, .chemical-list span { font-size: 12px; }
+.auth-form label, .patent-form label, .edit-card label, .role-select { font-size: 15px; }
+.choice-grid legend { font-size: 16px; }
+.chemical-picker small { font-size: 13px; }
+.chemical-card select { font-size: 14px; }
+.structure-section > small, .secure-file > small { font-size: 12px; }
+.structure-section span, .structure-section p, .secure-file p { font-size: 13px; }
+.ai-heading > div:first-child > p:last-child { font-size: 16px; }
+.analysis-status { font-size: 12px; }
+.analysis-quality small, .report-section small { font-size: 12px; }
+.report-section p, .report-section li, .analysis-details summary { font-size: 15px; }
+.analysis-details article strong { font-size: 15px; }
+.analysis-details article p { font-size: 14px; }
+.analysis-table-block h4 { font-size: 16px; }
+.analysis-table-block h4 span { font-size: 12px; }
+.analysis-table { font-size: 14px; }
+.analysis-table th { font-size: 12px; }
+.suggestion-meta span, .suggestion-meta b { font-size: 12px; }
+.suggestion-card h4 { font-size: 18px; line-height: 1.4; }
+.normalized-value, .suggestion-card blockquote span, .analysis-details blockquote span { font-size: 14px; }
+.suggestion-card blockquote cite, .analysis-details blockquote cite { font-size: 12px; }
+.review-actions button, .reviewed-label, .ai-disclaimer, .catalog-warning { font-size: 13px; }
 .learning-correction label { color: #e7ebf3; font-size: 12px; font-weight: 750; }
 .learning-correction input { width: 100%; min-height: 42px; padding: 0 12px; border: 1px solid #3a465a; border-radius: 10px; outline: none; color: #f0f3f8; background: #0c1118; font: inherit; font-size: 12px; }
 .learning-correction input:focus { border-color: #6f8fe7; box-shadow: 0 0 0 3px #6f8fe722; }
@@ -387,6 +450,37 @@ body { font-size: 15px; line-height: 1.5; }
 .learning-correction button:nth-child(2), .learning-correction button:nth-child(3) { color: #afb7c5; background: #151a22; }
 .learning-correction button:disabled { opacity: .4; cursor: not-allowed; }
 
+/* Editable structured patent data. Blue = chemical, violet = commercial product. */
+.detail-layout { grid-template-columns: minmax(0, 1.15fr) minmax(390px, .85fr); }
+.structure-card-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 20px; }
+.structure-card-heading h2 { margin: 0; }
+.structure-card-heading button { min-height: 38px; padding: 0 14px; border: 1px solid #405170; border-radius: 11px; color: #d6e0fa; background: #172136; font-size: 13px; font-weight: 750; cursor: pointer; }
+.structure-card-heading button:disabled { opacity: .45; cursor: wait; }
+.structure-editor { display: grid; gap: 18px; }
+.structure-editor fieldset { min-width: 0; display: grid; gap: 11px; margin: 0; padding: 15px; border: 1px solid #303947; border-radius: 15px; background: #0e131b; }
+.structure-editor legend { padding: 0 7px; color: #9baddd; font: 12px var(--font-geist-mono); letter-spacing: .07em; }
+.structure-choice-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.structure-choice-grid label, .raw-material-option, .structure-material-options article > label { display: flex; grid-template-columns: none; align-items: flex-start; gap: 9px; color: #c7ced9; font-size: 13px; font-weight: 600; }
+.structure-editor input[type='checkbox'] { width: 17px; height: 17px; flex: none; margin-top: 2px; accent-color: #6483dc; }
+.structure-search { display: grid !important; gap: 7px !important; color: #9da7b7 !important; }
+.structure-search input { min-height: 44px !important; padding: 10px 12px !important; border-color: #344052 !important; color: #e8ecf3 !important; background: #0b1017 !important; }
+.structure-material-options { max-height: 420px; display: grid; gap: 8px; overflow-y: auto; padding-right: 4px; scrollbar-color: #45516a transparent; }
+.structure-material-options article { display: grid; gap: 10px; padding: 12px; border: 1px solid #293446; border-left: 3px solid #6689e8; border-radius: 12px; background: #101827; }
+.structure-material-options article.product { border-color: #3b304e; border-left-color: #9a78d1; background: #181323; }
+.structure-material-options article.active { box-shadow: inset 0 0 0 1px #6689e866; }
+.structure-material-options article.active.product { box-shadow: inset 0 0 0 1px #9a78d166; }
+.structure-material-options article span, .raw-material-option span { min-width: 0; display: grid; gap: 3px; }
+.structure-material-options article strong, .raw-material-option strong { color: #e2e7ef; font-size: 14px; overflow-wrap: anywhere; }
+.structure-material-options article small, .raw-material-option small { color: #8c97a8; font-size: 12px; font-weight: 500; line-height: 1.4; }
+.structure-material-options select { width: 100%; min-height: 42px; padding: 0 11px; border: 1px solid #3a4658; border-radius: 10px; color: #e5eaf2; background: #0b1017; font-size: 13px; }
+.raw-material-option { padding: 11px; border: 1px dashed #4b3e5d; border-radius: 11px; background: #17131f; }
+.structure-save { width: 100%; min-height: 48px; background: #365cb8; }
+.structure-section span.structure-chemical { color: #c9d8ff; background: #1a2847; }
+.structure-section span.structure-product { color: #dfcff8; background: #2a1d3d; }
+.structure-section span strong { font-weight: 750; }
+.structure-section span em { color: #9ba6b9; }
+
 @media (max-width: 800px) {
   .analysis-quality { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .structure-choice-grid { grid-template-columns: 1fr; }
 }

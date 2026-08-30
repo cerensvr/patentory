@@ -5,7 +5,9 @@ import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
 const root = fileURLToPath(new URL('..', import.meta.url)).replace(/\/$/, '');
-const statusResult = spawnSync('npx', ['supabase', 'status', '-o', 'json'], { cwd: root, encoding: 'utf8' });
+const supabaseCli = process.env.SUPABASE_CLI || 'npx';
+const supabaseArgs = process.env.SUPABASE_CLI ? [] : ['supabase'];
+const statusResult = spawnSync(supabaseCli, [...supabaseArgs, 'status', '-o', 'json'], { cwd: root, encoding: 'utf8' });
 assert.equal(statusResult.status, 0, statusResult.stderr);
 const local = JSON.parse(statusResult.stdout.slice(statusResult.stdout.indexOf('{')));
 const apiUrl = local.API_URL;
@@ -21,25 +23,40 @@ const analysis = {
   novelty_points: ['DGEBA ve IPDA kombinasyonu'],
   advantages: ['Yüksek yapışma', 'Kimyasal dayanım'],
   limitations_and_risks: ['Ölçek büyütme verisi bulunmuyor'],
-  independent_claims: [{ claim_number: '1', summary_tr: 'DGEBA ve IPDA içeren epoksi kaplama.', evidence_quote: 'comprising DGEBA and IPDA', page: 1 }],
+  independent_claims: [{ claim_number: '1', summary_tr: 'DGEBA ve IPDA içeren epoksi kaplama.', evidence_quote: 'comprising DGEBA and IPDA', evidence_translation_tr: 'DGEBA ve IPDA içerir', page: 1 }],
   chemicals: [
-    { raw_name: 'DGEBA', canonical_candidate: 'Bisphenol A diglycidyl ether', abbreviation: 'DGEBA', cas_number: null, role: 'Epoxy Resin', purpose: 'Binder', confidence: 0.98, evidence_quote: 'bisphenol A diglycidyl ether (DGEBA)', page: 1 },
-    { raw_name: 'IPDA', canonical_candidate: 'Isophorone diamine', abbreviation: 'IPDA', cas_number: null, role: 'Hardener', purpose: 'Curing agent', confidence: 0.99, evidence_quote: 'isophorone diamine (IPDA) as a hardener', page: 1 },
-    { raw_name: 'IPDA', canonical_candidate: 'Isophorone diamine', abbreviation: 'IPDA', cas_number: null, role: 'Hardener', purpose: 'Curing agent', confidence: 0.62, evidence_quote: 'duplicate IPDA evidence', page: 1 },
+    { raw_name: 'DGEBA', display_name_tr: 'Bisfenol A diglisidil eter', canonical_candidate: 'Bisphenol A diglycidyl ether', abbreviation: 'DGEBA', cas_number: null, role: 'Epoxy Resin', purpose: 'Binder', confidence: 0.98, evidence_quote: 'bisphenol A diglycidyl ether (DGEBA)', evidence_translation_tr: 'bisfenol A diglisidil eter (DGEBA)', page: 1 },
+    { raw_name: 'IPDA', display_name_tr: 'İzoforon diamin', canonical_candidate: 'Isophorone diamine', abbreviation: 'IPDA', cas_number: null, role: 'Hardener', purpose: 'Curing agent', confidence: 0.99, evidence_quote: 'isophorone diamine (IPDA) as a hardener', evidence_translation_tr: 'sertleştirici olarak izoforon diamin (IPDA)', page: 1 },
+    { raw_name: 'IPDA', display_name_tr: 'İzoforon diamin', canonical_candidate: 'Isophorone diamine', abbreviation: 'IPDA', cas_number: null, role: 'Hardener', purpose: 'Curing agent', confidence: 0.62, evidence_quote: 'duplicate IPDA evidence', evidence_translation_tr: 'yinelenen IPDA kanıtı', page: 1 },
   ],
-  commercial_products: [{ trade_name: 'VESTAMIN IPD', manufacturer: 'Evonik', mapped_chemical_candidate: 'Isophorone diamine', product_type: 'PURE_CHEMICAL', role: 'Hardener', purpose: 'Curing agent', confidence: 0.75, evidence_quote: 'VESTAMIN IPD', page: 1 }],
-  application_categories: [{ name: 'Coating', confidence: 0.97, evidence_quote: 'epoxy coating composition', page: 1 }, { name: 'Unsupported guess', confidence: 0.4, evidence_quote: 'guess', page: null }],
-  technical_purposes: [{ name: 'High Adhesion', confidence: 0.96, evidence_quote: 'provides high adhesion', page: 1 }],
+  commercial_products: [{ trade_name: 'VESTAMIN IPD', display_name_latin: 'VESTAMIN IPD', manufacturer: 'Evonik', mapped_chemical_candidate: 'Isophorone diamine', product_type: 'PURE_CHEMICAL', role: 'Hardener', purpose: 'Curing agent', confidence: 0.75, evidence_quote: 'VESTAMIN IPD', evidence_translation_tr: 'VESTAMIN IPD', page: 1 }],
+  application_categories: [{ name: 'Coating', display_name_tr: 'Kaplama', confidence: 0.97, evidence_quote: 'epoxy coating composition', evidence_translation_tr: 'epoksi kaplama bileşimi', page: 1 }, { name: 'Unsupported guess', display_name_tr: 'Desteksiz tahmin', confidence: 0.4, evidence_quote: 'guess', evidence_translation_tr: 'tahmin', page: null }],
+  technical_purposes: [{ name: 'High Adhesion', display_name_tr: 'Yüksek yapışma', confidence: 0.96, evidence_quote: 'provides high adhesion', evidence_translation_tr: 'yüksek yapışma sağlar', page: 1 }],
   process_steps: ['DGEBA ve IPDA karıştırılır', '80 °C’de 2 saat kürlenir'],
   performance_metrics: [{ name_tr: 'Kürlenme sıcaklığı', value: '80', unit: '°C', context_tr: 'Örnek 1', page: 1 }],
+  component_standardizations: [
+    { source_name: 'DGEBA', standardized_name_tr: 'Bisfenol A diglisidil eter', function_tr: 'Epoksi reçinesi', description_tr: 'Ana bağlayıcı', page: 1 },
+    { source_name: 'IPDA', standardized_name_tr: 'İzoforon diamin', function_tr: 'Sertleştirici', description_tr: 'Amin kürleyici', page: 1 },
+  ],
+  example_inventory: { declared_count: 20, identifiers: Array.from({ length: 20 }, (_, index) => String(index + 1)), source_pages: [1], note_tr: 'Patent tablosunda yirmi deney örneği bulundu.' },
+  experimental_tables: [{
+    table_type: 'EXAMPLE_COMPOSITION_MATRIX',
+    title_tr: 'Örnek bileşimi',
+    columns: [
+      { label_tr: 'DGEBA', original_label: 'DGEBA', unit: 'phr' },
+      { label_tr: 'IPDA', original_label: 'IPDA', unit: 'phr' },
+    ],
+    rows: Array.from({ length: 20 }, (_, index) => ({ row_label_tr: String(index + 1), cells_tr: ['100', String(25 + index)], page: 1 })),
+    note_tr: 'Miktarlar phr cinsindedir.',
+  }],
   examples: [{
     example_number: 'Örnek 1',
     summary_tr: '100 kısım DGEBA ve 25 kısım IPDA içeren reçete.',
     chemicals: ['DGEBA', 'IPDA'],
     conditions_tr: ['80 °C', '2 saat'],
     composition: [
-      { component: 'DGEBA', amount: '100', unit: 'phr', basis_tr: 'reçine bazında', role_tr: 'Epoksi reçine', page: 1 },
-      { component: 'IPDA', amount: '25', unit: 'phr', basis_tr: 'reçine bazında', role_tr: 'Sertleştirici', page: 1 },
+      { component: 'DGEBA', component_original: 'DGEBA', component_tr: 'Bisfenol A diglisidil eter', amount: '100', unit: 'phr', unit_original: 'phr', unit_tr: 'phr', basis_tr: 'reçine bazında', role_tr: 'Epoksi reçine', page: 1 },
+      { component: 'IPDA', component_original: 'IPDA', component_tr: 'İzoforon diamin', amount: '25', unit: 'phr', unit_original: 'phr', unit_tr: 'phr', basis_tr: 'reçine bazında', role_tr: 'Sertleştirici', page: 1 },
     ],
     production_steps: [
       { step_number: '1', instruction_tr: 'DGEBA ile IPDA karıştırılır.', conditions_tr: ['23 °C'], page: 1 },
@@ -74,6 +91,9 @@ const mockServer = http.createServer((request, response) => {
     assert.ok(payload.response_format.schema.properties.examples.items.properties.composition);
     assert.ok(payload.response_format.schema.properties.examples.items.properties.production_steps);
     assert.ok(payload.response_format.schema.properties.examples.items.properties.test_results);
+    assert.ok(payload.response_format.schema.properties.example_inventory);
+    assert.ok(payload.response_format.schema.properties.experimental_tables);
+    assert.ok(payload.response_format.schema.properties.component_standardizations);
     assert.ok(payload.response_format.schema.properties.patent_metadata.properties.abstract_tr);
     assert.ok(payload.response_format.schema.properties.examples.items.properties.summary_tr);
     assert.ok(payload.response_format.schema.properties.examples.items.properties.test_results.items.properties.test_name_tr);
@@ -102,7 +122,7 @@ await new Promise((resolve, reject) => {
   mockServer.once('error', reject); mockServer.listen(5544, '0.0.0.0', resolve);
 });
 
-const functionsProcess = spawn('npx', ['supabase', 'functions', 'serve', '--env-file', 'supabase/functions/.env.test'], { cwd: root, stdio: ['ignore', 'pipe', 'pipe'] });
+const functionsProcess = spawn(supabaseCli, [...supabaseArgs, 'functions', 'serve', '--env-file', 'supabase/functions/.env.test'], { cwd: root, stdio: ['ignore', 'pipe', 'pipe'] });
 await new Promise((resolve, reject) => {
   const timeout = setTimeout(() => reject(new Error('Edge Functions did not start')), 30_000);
   const inspect = (chunk) => {
@@ -204,11 +224,15 @@ try {
   assert.ok(ipda?.matched_chemical_id);
   assert.ok(ipda?.matched_role_id);
   const run = await request(`/rest/v1/ai_analysis_runs?id=eq.${analyzed.data.runId}&select=prompt_version,model,result_json`, { token: owner.token });
-  assert.equal(run.data[0].prompt_version, 'patent-review-tr-v5');
+  assert.equal(run.data[0].prompt_version, 'patent-review-tr-v6');
   assert.equal(run.data[0].model, 'gemini:gemini-3.5-flash-lite');
   assert.equal(run.data[0].result_json.examples[0].composition[1].component, 'IPDA');
   assert.equal(run.data[0].result_json.examples[0].production_steps[1].conditions[0], '80 °C');
   assert.equal(run.data[0].result_json.examples[0].test_results[0].method, 'ASTM D4541');
+  assert.equal(run.data[0].result_json.extraction_audit.expected_count, 20);
+  assert.equal(run.data[0].result_json.extraction_audit.captured_count, 20);
+  assert.equal(run.data[0].result_json.extraction_audit.complete, true);
+  assert.equal(run.data[0].result_json.experimental_tables[0].rows.length, 20);
   assert.ok(run.data[0].result_json.warnings.some((warning) => warning.includes('1 düşük güvenli')));
 
   const forbidden = await request('/functions/v1/review-ai-suggestion', { method: 'POST', token: intruder.token, body: { suggestionId: ipda.id, decision: 'ACCEPTED' } });
@@ -254,7 +278,7 @@ try {
   assert.equal(deletedOwner.response.status, 200, JSON.stringify(deletedOwner.data));
   assert.equal(deletedOwner.data.deleted, true);
   owner = null;
-  console.log('EDGE_E2E_PASS metadata=US3684617A gemini_fallback=passed tables=v4 suggestions=5 suppressed=1 cross_user=blocked learning=accepted+corrected+reused account_deleted=true');
+  console.log('EDGE_E2E_PASS metadata=US3684617A gemini_fallback=passed tables=v6 complete_examples=20/20 suggestions=5 suppressed=1 cross_user=blocked learning=accepted+corrected+reused account_deleted=true');
 } finally {
   for (const user of [owner, intruder]) {
     if (user) await request(`/auth/v1/admin/users/${user.id}`, { method: 'DELETE', key: serviceKey, token: serviceKey });

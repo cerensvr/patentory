@@ -28,6 +28,7 @@ Live web application: [patentory.vercel.app](https://patentory.vercel.app)
 ```text
 apps/web                 Next.js App Router application
 apps/mobile              Expo Router Android application
+apps/chatgpt-bridge      Local ChatGPT Plus browser bridge
 packages/supabase        Generated shared database types
 supabase/migrations      Versioned schema, grants, RLS, Storage, search and seeds
 supabase/tests/database  pgTAP security tests
@@ -55,9 +56,12 @@ npx supabase secrets set OPENAI_API_KEY=... OPENAI_PATENT_MODEL=gpt-5.6
 Run the clients:
 
 ```bash
+pnpm bridge:install
 pnpm dev:web
 pnpm dev:mobile
 ```
+
+`bridge:install` installs a per-user macOS LaunchAgent, so the local bridge starts automatically at login and restarts if needed. On the first Plus scan, sign in once in the dedicated Chrome window. Patentory handles later PDF uploads, prompts, result parsing, and database writes from its single scan button.
 
 ## Verification
 
@@ -87,6 +91,6 @@ Patentory uses the dedicated Supabase project currently named **Patent Knowledge
 
 ## AI analysis
 
-`analyze-patent` retrieves the private PDF inside a secured Edge Function and sends it to Gemini with strict structured output, prompt-injection resistance, size/rate limits, and versioned analysis runs. Gemini 3.7 Flash is primary and 3.5 Flash-Lite can take over on quota failure. It extracts technical problem/solution, novelty, independent claims, chemicals, trade products, process steps, separate patent examples, per-example formulation rows, ordered manufacturing steps, test results, and performance measurements with page evidence. It writes a faithful Turkish abstract translation to a field that stays separate from the original abstract. `review-ai-suggestion` applies individually confirmed findings and records per-user accepted/rejected/corrected learning without mutating the curated chemistry catalog. `delete-account` removes private Storage objects before deleting the Auth user.
+`analyze-patent` prepares a short-lived, authenticated analysis job. The local loopback bridge downloads the private PDF, opens a dedicated persistent Chrome profile, submits the document to the signed-in user's ChatGPT Plus session, parses the JSON response, and returns it to the secured Edge Function for validation and persistence. Gemini remains available only as an explicit API fallback. The analysis extracts technical problem/solution, novelty, independent claims, chemicals, trade products, process steps, separate patent examples, per-example formulation rows, ordered manufacturing steps, test results, and performance measurements with page evidence. It writes a faithful Turkish abstract translation to a field that stays separate from the original abstract. `review-ai-suggestion` applies individually confirmed findings and records per-user accepted/rejected/corrected learning without mutating the curated chemistry catalog. `delete-account` removes private Storage objects before deleting the Auth user.
 
 The upload, classification, CRUD, and filter workflow remains independent of provider availability. `pgvector` can be introduced later for semantic similarity without redesigning the relational core.

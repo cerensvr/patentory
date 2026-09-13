@@ -52,6 +52,8 @@ const TYPE_LABELS: Record<string, string> = {
   TECHNICAL_PURPOSE: 'Teknik amaç',
 };
 
+const CHATGPT_BRIDGE_URL = (process.env.NEXT_PUBLIC_CHATGPT_BRIDGE_URL ?? 'http://127.0.0.1:47831').replace(/\/$/, '');
+
 export function AiAnalysisPanel({ patentId, hasPdf, initialRun, initialSuggestions }: {
   patentId: string;
   hasPdf: boolean;
@@ -78,28 +80,76 @@ export function AiAnalysisPanel({ patentId, hasPdf, initialRun, initialSuggestio
   async function analyze() {
     setBusy(true);
     setError(undefined);
-    setMessage('PDF yüksek ayrıntıyla inceleniyor. Bu işlem belgenin uzunluğuna göre birkaç dakika sürebilir.');
-    const { data, error: invokeError } = await createClient().functions.invoke('analyze-patent', {
-      body: { patentId, preferGemini: true, allowGeminiFallback, allowOpenAiFallback: false },
-    });
-    setBusy(false);
-    if (invokeError) {
-      const context = await responseMessage(invokeError.context);
-      setError(context ?? invokeError.message);
+    setMessage('Patent ve güvenli PDF bağlantısı hazırlanıyor…');
+    let runId: string | undefined;
+    try {
+      const prepared = await invokeAnalysis({ patentId, mode: 'prepare_chatgpt' });
+      runId = typeof prepared?.runId === 'string' ? prepared.runId : undefined;
+      if (!runId || typeof prepared?.prompt !== 'string' || typeof prepared?.pdfUrl !== 'string') {
+        throw new LocalBridgeError('CHATGPT_INVALID_RESULT', 'Patentory geçerli bir ChatGPT görevi hazırlayamadı.');
+      }
+
+      setMessage('ChatGPT Plus PDF’yi inceliyor. Belgenin uzunluğuna göre birkaç dakika sürebilir; bu sekmeyi açık tutun.');
+      const controller = new AbortController();
+      const timer = window.setTimeout(() => controller.abort(), 16 * 60 * 1000);
+      let bridgeResponse: Response;
+      try {
+        bridgeResponse = await fetch(`${CHATGPT_BRIDGE_URL}/analyze`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pdfUrl: prepared.pdfUrl, pdfName: prepared.pdfName, prompt: prepared.prompt }),
+          signal: controller.signal,
+        });
+      } catch (bridgeFetchError) {
+        const code = bridgeFetchError instanceof DOMException && bridgeFetchError.name === 'AbortError'
+          ? 'CHATGPT_TIMEOUT'
+          : 'BRIDGE_UNAVAILABLE';
+        throw new LocalBridgeError(code, bridgeMessage(code));
+      } finally {
+        window.clearTimeout(timer);
+      }
+      const bridgeData = await bridgeResponse.json().catch(() => ({}));
+      if (!bridgeResponse.ok || !bridgeData?.analysis) {
+        const code = typeof bridgeData?.code === 'string' ? bridgeData.code : 'CHATGPT_BRIDGE_FAILED';
+        throw new LocalBridgeError(code, typeof bridgeData?.error === 'string' ? bridgeData.error : bridgeMessage(code));
+      }
+
+      setMessage('ChatGPT bulguları Patentory’ye kaydediliyor…');
+      const completed = await invokeAnalysis({ patentId, mode: 'complete_chatgpt', runId, analysis: bridgeData.analysis });
+      setMessage(completed?.status === 'REVIEW_REQUIRED'
+        ? 'ChatGPT Plus taraması tamamlandı. Bulguları doğrulayıp kütüphaneye ekleyebilirsiniz.'
+        : 'ChatGPT Plus taraması tamamlandı.');
+      router.refresh();
+    } catch (analysisError) {
+      const code = analysisError instanceof LocalBridgeError ? analysisError.code : 'CHATGPT_BRIDGE_FAILED';
+      if (runId) {
+        try { await invokeAnalysis({ patentId, mode: 'fail_chatgpt', runId, errorCode: code }); } catch { /* Preserve the original error. */ }
+      }
+      setError(analysisError instanceof Error ? analysisError.message : bridgeMessage(code));
       setMessage(undefined);
       router.refresh();
-      return;
+    } finally {
+      setBusy(false);
     }
-    if (data?.error) {
-      setError(analysisErrorMessage(data));
+  }
+
+  async function analyzeWithApi() {
+    setBusy(true);
+    setError(undefined);
+    setMessage('Gemini API ile PDF yüksek ayrıntıyla inceleniyor…');
+    try {
+      const data = await invokeAnalysis({ patentId, preferGemini: true, allowGeminiFallback, allowOpenAiFallback: false });
+      setMessage(data?.status === 'REVIEW_REQUIRED'
+        ? 'Gemini ile tarama tamamlandı. Bulguları doğrulayıp kütüphaneye ekleyebilirsiniz.'
+        : 'Gemini ile tarama tamamlandı.');
+      router.refresh();
+    } catch (analysisError) {
+      setError(analysisError instanceof Error ? analysisError.message : 'Gemini taraması tamamlanamadı.');
       setMessage(undefined);
-      return;
+      router.refresh();
+    } finally {
+      setBusy(false);
     }
-    const provider = data?.provider === 'gemini' ? 'Gemini' : 'OpenAI';
-    setMessage(data?.status === 'REVIEW_REQUIRED'
-      ? `${provider} ile tarama tamamlandı. Bulguları doğrulayıp kütüphaneye ekleyebilirsiniz.`
-      : `${provider} ile tarama tamamlandı.`);
-    router.refresh();
   }
 
   async function review(suggestion: Suggestion, decision: 'ACCEPTED' | 'REJECTED', correction?: string) {
@@ -141,15 +191,22 @@ export function AiAnalysisPanel({ patentId, hasPdf, initialRun, initialSuggestio
             {statusLabel(initialRun?.status, initialRun?.error_code)}
           </span>
           <button className="primary-action" disabled={!hasPdf || processing} onClick={analyze} type="button">
-            {processing ? 'PDF inceleniyor…' : initialRun ? 'Yeniden tara' : 'Patent taramasını başlat'}
+            {processing ? 'PDF inceleniyor…' : initialRun ? 'ChatGPT Plus ile yeniden tara' : 'ChatGPT Plus ile tara'}
           </button>
         </div>
       </div>
 
-      <label className="ai-fallback-option">
-        <input checked={allowGeminiFallback} disabled={processing} onChange={(event) => setAllowGeminiFallback(event.target.checked)} type="checkbox" />
-        <span><strong>Gemini 3.7 kotası dolarsa Flash‑Lite ile devam et</strong><small>3.7 Flash günlük 20 güçlü tarama sağlar; Flash‑Lite yedeği günlük 500 ek tarama sunar. Ücretsiz Gemini’ye gönderilen yayımlanmış patent içeriği Google tarafından ürün geliştirmede kullanılabilir.</small></span>
-      </label>
+      <p className="ai-fallback-option"><span><strong>ChatGPT Plus, bu Mac’teki özel köprüyle otomatik kullanılır.</strong><small>İlk kullanımda açılan Chrome penceresinde bir kez giriş yapmanız gerekebilir. Sonraki taramalarda PDF yükleme, soru sorma ve sonucu kaydetme otomatik yapılır.</small></span></p>
+      <details className="analysis-details">
+        <summary>API ile yedek tarama</summary>
+        <div>
+          <label className="ai-fallback-option">
+            <input checked={allowGeminiFallback} disabled={processing} onChange={(event) => setAllowGeminiFallback(event.target.checked)} type="checkbox" />
+            <span><strong>Gemini modeli dolarsa Flash‑Lite ile devam et</strong><small>Bu seçenek yalnızca aşağıdaki API düğmesi kullanıldığında geçerlidir.</small></span>
+          </label>
+          <button disabled={!hasPdf || processing} onClick={analyzeWithApi} type="button">Gemini API ile tara</button>
+        </div>
+      </details>
 
       {!hasPdf && <p className="form-message error">Tarama için bu kayda önce özel bir PDF yükleyin.</p>}
       {message && <p className="form-message success">{message}</p>}
@@ -473,6 +530,7 @@ function isQuotaCode(code?: string | null) {
 
 function providerLabel(model?: string | null) {
   if (!model) return '—';
+  if (model.startsWith('chatgpt-plus:')) return 'ChatGPT Plus';
   if (model.startsWith('gemini:')) return `Gemini · ${model.slice(7)}`;
   if (model.startsWith('openai:')) return `OpenAI · ${model.slice(7)}`;
   return model;
@@ -576,6 +634,40 @@ function confidenceBand(value: number) {
 
 function confidenceLabel(value: number) {
   return value >= .85 ? 'Yüksek güven' : value >= .7 ? 'Orta güven' : 'Kontrol gerekli';
+}
+
+class LocalBridgeError extends Error {
+  code: string;
+
+  constructor(code: string, message: string) {
+    super(message);
+    this.name = 'LocalBridgeError';
+    this.code = code;
+  }
+}
+
+async function invokeAnalysis(body: Record<string, unknown>) {
+  const { data, error } = await createClient().functions.invoke('analyze-patent', { body });
+  if (error) {
+    const context = await responseMessage(error.context);
+    throw new Error(context ?? error.message);
+  }
+  if (data?.error) throw new Error(analysisErrorMessage(data));
+  return data;
+}
+
+function bridgeMessage(code: string) {
+  return ({
+    LOGIN_REQUIRED: 'Açılan Chrome penceresinde ChatGPT Plus hesabınıza bir kez giriş yapıp yeniden deneyin.',
+    BRIDGE_UNAVAILABLE: 'Bu Mac’teki ChatGPT köprüsüne ulaşılamadı. Köprü otomatik yeniden başlar; birkaç saniye sonra tekrar deneyin.',
+    BRIDGE_BUSY: 'ChatGPT köprüsü başka bir patent üzerinde çalışıyor. O tarama bitince yeniden deneyin.',
+    CHATGPT_TIMEOUT: 'ChatGPT analizi beklenen sürede tamamlanmadı. Yeniden deneyin.',
+    CHATGPT_INVALID_RESULT: 'ChatGPT geçerli bir analiz sonucu üretemedi. Yeniden deneyin.',
+    PDF_DOWNLOAD_FAILED: 'Patent PDF’si yerel köprüye indirilemedi. Yeniden deneyin.',
+    PDF_TOO_LARGE: 'PDF 50 MB sınırını aşıyor.',
+    INVALID_PDF: 'Yüklenen dosya geçerli bir PDF değil.',
+    CHATGPT_BRIDGE_FAILED: 'ChatGPT Plus taraması tamamlanamadı. Yeniden deneyin.',
+  } as Record<string, string>)[code] ?? 'ChatGPT Plus taraması tamamlanamadı. Yeniden deneyin.';
 }
 
 async function responseMessage(context: unknown) {

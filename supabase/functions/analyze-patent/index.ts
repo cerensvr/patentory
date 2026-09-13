@@ -875,16 +875,29 @@ Deno.serve(async (request) => {
   let preferGemini = false;
   let allowGeminiFallback = false;
   let allowOpenAiFallback = false;
+  let mode: 'provider' | 'prepare_chatgpt' | 'complete_chatgpt' | 'fail_chatgpt' = 'provider';
+  let requestedRunId = '';
+  let importedAnalysis: unknown;
+  let bridgeErrorCode = '';
   try {
     const body = await request.json();
     patentId = typeof body?.patentId === 'string' ? body.patentId : '';
     preferGemini = body?.preferGemini === true;
     allowGeminiFallback = body?.allowGeminiFallback === true;
     allowOpenAiFallback = body?.allowOpenAiFallback === true;
+    mode = ['prepare_chatgpt', 'complete_chatgpt', 'fail_chatgpt'].includes(body?.mode)
+      ? body.mode
+      : 'provider';
+    requestedRunId = typeof body?.runId === 'string' ? body.runId : '';
+    importedAnalysis = body?.analysis;
+    bridgeErrorCode = cleanText(body?.errorCode, 80);
   } catch {
     return json({ error: 'Geçersiz istek.' }, 400);
   }
   if (!/^[0-9a-f-]{36}$/i.test(patentId)) return json({ error: 'Geçersiz patent kimliği.' }, 400);
+  if (mode !== 'provider' && mode !== 'prepare_chatgpt' && !/^[0-9a-f-]{36}$/i.test(requestedRunId)) {
+    return json({ error: 'Geçersiz analiz kaydı.' }, 400);
+  }
 
   const { data: patent, error: patentError } = await userClient
     .from('patents')
@@ -897,51 +910,92 @@ Deno.serve(async (request) => {
   if (patent.pdf_mime_type !== 'application/pdf') return json({ error: 'Yalnızca PDF dosyaları analiz edilebilir.' }, 422);
   if (patent.pdf_size_bytes && patent.pdf_size_bytes > MAX_PDF_BYTES) return json({ error: 'PDF 50 MB sınırını aşıyor.' }, 413);
   const geminiConfigured = Boolean(geminiKey && geminiModels.length);
-  if ((preferGemini && !geminiConfigured && !(allowOpenAiFallback && openAiKey))
-    || (!preferGemini && !openAiKey && !(allowGeminiFallback && geminiConfigured))) {
+  if (mode === 'provider' && ((preferGemini && !geminiConfigured && !(allowOpenAiFallback && openAiKey))
+    || (!preferGemini && !openAiKey && !(allowGeminiFallback && geminiConfigured)))) {
     return json({ error: 'Patent tarama servisi henüz etkinleştirilmedi.', code: 'AI_NOT_CONFIGURED', retryable: false }, 503);
   }
 
-  const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString();
-  const { data: activeRun } = await serviceClient
-    .from('ai_analysis_runs')
-    .select('id')
-    .eq('patent_id', patent.id)
-    .eq('owner_user_id', user.id)
-    .in('status', ['QUEUED', 'PROCESSING'])
-    .gte('created_at', thirtyMinutesAgo)
-    .limit(1)
-    .maybeSingle();
-  if (activeRun) return json({ error: 'Bu patent için bir tarama zaten devam ediyor.', runId: activeRun.id }, 409);
+  let run: { id: string };
+  if (mode === 'complete_chatgpt' || mode === 'fail_chatgpt') {
+    const { data: existingRun, error: existingRunError } = await serviceClient
+      .from('ai_analysis_runs')
+      .select('id,status,model')
+      .eq('id', requestedRunId)
+      .eq('patent_id', patent.id)
+      .eq('owner_user_id', user.id)
+      .maybeSingle();
+    if (existingRunError || !existingRun || !['QUEUED', 'PROCESSING'].includes(existingRun.status) || !String(existingRun.model ?? '').startsWith('chatgpt-plus:')) {
+      return json({ error: 'ChatGPT Plus analiz kaydı bulunamadı veya artık tamamlanmış.' }, 404);
+    }
+    run = { id: existingRun.id };
+    if (mode === 'fail_chatgpt') {
+      const safeCode = ['LOGIN_REQUIRED', 'BRIDGE_UNAVAILABLE', 'BRIDGE_BUSY', 'CHATGPT_TIMEOUT', 'CHATGPT_INVALID_RESULT'].includes(bridgeErrorCode)
+        ? bridgeErrorCode
+        : 'CHATGPT_BRIDGE_FAILED';
+      const safeMessages: Record<string, string> = {
+        LOGIN_REQUIRED: 'ChatGPT oturumu gerekli. Açılan Chrome penceresinde bir kez giriş yapıp yeniden deneyin.',
+        BRIDGE_UNAVAILABLE: 'Yerel ChatGPT köprüsüne ulaşılamadı. Köprüyü çalıştırıp yeniden deneyin.',
+        BRIDGE_BUSY: 'Yerel ChatGPT köprüsü başka bir patent üzerinde çalışıyor.',
+        CHATGPT_TIMEOUT: 'ChatGPT analizi beklenen sürede tamamlanmadı.',
+        CHATGPT_INVALID_RESULT: 'ChatGPT geçerli yapılandırılmış sonuç üretemedi.',
+        CHATGPT_BRIDGE_FAILED: 'Yerel ChatGPT Plus analizi tamamlanamadı.',
+      };
+      const completedAt = new Date().toISOString();
+      await Promise.all([
+        serviceClient.from('ai_analysis_runs').update({ status: 'FAILED', error_code: safeCode, error_message: safeMessages[safeCode], completed_at: completedAt }).eq('id', run.id).eq('owner_user_id', user.id),
+        serviceClient.from('patents').update({ ai_analysis_status: 'FAILED' }).eq('id', patent.id).eq('owner_user_id', user.id),
+      ]);
+      return json({ runId: run.id, status: 'FAILED', code: safeCode });
+    }
+  } else {
+    const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+    const { data: activeRun } = await serviceClient
+      .from('ai_analysis_runs')
+      .select('id')
+      .eq('patent_id', patent.id)
+      .eq('owner_user_id', user.id)
+      .in('status', ['QUEUED', 'PROCESSING'])
+      .gte('created_at', thirtyMinutesAgo)
+      .limit(1)
+      .maybeSingle();
+    if (activeRun) return json({ error: 'Bu patent için bir tarama zaten devam ediyor.', runId: activeRun.id }, 409);
 
-  const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
-  const { count: recentRunCount } = await serviceClient
-    .from('ai_analysis_runs')
-    .select('id', { count: 'exact', head: true })
-    .eq('owner_user_id', user.id)
-    .gte('created_at', oneHourAgo);
-  if ((recentRunCount ?? 0) >= 10) return json({ error: 'Saatlik AI tarama sınırına ulaşıldı. Bir süre sonra tekrar deneyin.', code: 'PATENTORY_RATE_LIMIT', retryable: true }, 429);
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    const { count: recentRunCount } = await serviceClient
+      .from('ai_analysis_runs')
+      .select('id', { count: 'exact', head: true })
+      .eq('owner_user_id', user.id)
+      .gte('created_at', oneHourAgo);
+    if ((recentRunCount ?? 0) >= 10) return json({ error: 'Saatlik AI tarama sınırına ulaşıldı. Bir süre sonra tekrar deneyin.', code: 'PATENTORY_RATE_LIMIT', retryable: true }, 429);
 
-  const { data: run, error: runError } = await serviceClient
-    .from('ai_analysis_runs')
-    .insert({
-      patent_id: patent.id,
-      owner_user_id: user.id,
-      status: 'PROCESSING',
-      model: preferGemini ? `gemini:${geminiModels[0]}` : `openai:${openAiModel}`,
-      prompt_version: PROMPT_VERSION,
-      source_pdf_path_snapshot: patent.pdf_storage_path,
-      started_at: new Date().toISOString(),
-    })
-    .select('id')
-    .single();
-  if (runError || !run) return json({ error: 'Analiz kaydı oluşturulamadı.' }, 500);
+    const initialModel = mode === 'prepare_chatgpt'
+      ? 'chatgpt-plus:browser'
+      : preferGemini ? `gemini:${geminiModels[0]}` : `openai:${openAiModel}`;
+    const { data: createdRun, error: runError } = await serviceClient
+      .from('ai_analysis_runs')
+      .insert({
+        patent_id: patent.id,
+        owner_user_id: user.id,
+        status: 'PROCESSING',
+        model: initialModel,
+        prompt_version: PROMPT_VERSION,
+        source_pdf_path_snapshot: patent.pdf_storage_path,
+        started_at: new Date().toISOString(),
+      })
+      .select('id')
+      .single();
+    if (runError || !createdRun) return json({ error: 'Analiz kaydı oluşturulamadı.' }, 500);
+    run = { id: createdRun.id };
 
-  await serviceClient.from('patents').update({ ai_analysis_status: 'PROCESSING' }).eq('id', patent.id).eq('owner_user_id', user.id);
+    await serviceClient.from('patents').update({ ai_analysis_status: 'PROCESSING' }).eq('id', patent.id).eq('owner_user_id', user.id);
+  }
 
   try {
+    const signedPdfPromise = mode === 'complete_chatgpt'
+      ? Promise.resolve({ data: { signedUrl: null }, error: null })
+      : serviceClient.storage.from('patent-pdfs').createSignedUrl(patent.pdf_storage_path, 180);
     const [signed, chemicalsResult, productsResult, productChemicalsResult, categoriesResult, purposesResult, rolesResult, learningResult] = await Promise.all([
-      serviceClient.storage.from('patent-pdfs').createSignedUrl(patent.pdf_storage_path, 180),
+      signedPdfPromise,
       serviceClient.from('chemicals').select('id,canonical_name,abbreviation,cas_number,chemical_synonyms(synonym)').or(`owner_user_id.is.null,owner_user_id.eq.${user.id}`),
       serviceClient.from('commercial_products').select('id,trade_name,manufacturer,product_type').or(`owner_user_id.is.null,owner_user_id.eq.${user.id}`),
       serviceClient.from('commercial_product_chemicals').select('commercial_product_id,chemical_id'),
@@ -954,7 +1008,8 @@ Deno.serve(async (request) => {
         .order('updated_at', { ascending: false })
         .limit(120),
     ]);
-    if (signed.error || !signed.data?.signedUrl) throw new Error('PDF_SIGNING_FAILED');
+    if (mode !== 'complete_chatgpt' && (signed.error || !signed.data?.signedUrl)) throw new Error('PDF_SIGNING_FAILED');
+    const signedPdfUrl = signed.data?.signedUrl ?? '';
 
     const categoryNames = (categoriesResult.data ?? []).map((item) => item.name).join(', ');
     const purposeNames = (purposesResult.data ?? []).map((item) => item.name).join(', ');
@@ -1063,9 +1118,21 @@ Sınıflandırma katalogları:
 
 Mevcut kayıt bağlamı: başlık=${patent.title ?? 'yok'}; patent numarası=${patent.patent_number ?? 'yok'}; mevcut özet=${patent.abstract_text ?? 'yok'}.`;
 
+    if (mode === 'prepare_chatgpt') {
+      const signedUrl = signedPdfUrl;
+      if (!signedUrl) throw new Error('PDF_SIGNING_FAILED');
+      return json({
+        runId: run.id,
+        prompt: `${prompt}\n\nYanıt olarak yalnızca tek bir geçerli JSON nesnesi yaz. Açıklama, Markdown ve kod çiti kullanma. Aşağıdaki JSON Schema'ya eksiksiz uy:\n${JSON.stringify(analysisSchema)}`,
+        pdfUrl: signedUrl,
+        pdfName: patent.pdf_original_filename || `${patent.id}.pdf`,
+        expiresIn: 180,
+      });
+    }
+
     const userHash = await sha256(`${user.id}:${patent.id}`);
-    let responseBody: JsonRecord;
-    let provider: 'openai' | 'gemini';
+    let responseBody: JsonRecord | null = null;
+    let provider: 'openai' | 'gemini' | 'chatgpt-plus';
     let effectiveModel: string;
     let fallbackFrom: string | null = null;
     let geminiPdfBase64: string | null = null;
@@ -1076,7 +1143,7 @@ Mevcut kayıt bağlamı: başlık=${patent.title ?? 'yok'}; patent numarası=${p
       if ((patent.pdf_size_bytes ?? 0) > MAX_GEMINI_INLINE_PDF_BYTES) {
         throw new Error('GEMINI:pdf_too_large:PDF is too large for secure inline analysis');
       }
-      const pdfResponse = await fetch(signed.data.signedUrl);
+      const pdfResponse = await fetch(signedPdfUrl);
       if (!pdfResponse.ok) throw new Error('GEMINI:pdf_download_failed:PDF could not be loaded for Gemini');
       const pdfBytes = new Uint8Array(await pdfResponse.arrayBuffer());
       if (pdfBytes.byteLength > MAX_GEMINI_INLINE_PDF_BYTES) throw new Error('GEMINI:pdf_too_large:PDF is too large for secure inline analysis');
@@ -1095,7 +1162,7 @@ Mevcut kayıt bağlamı: başlık=${patent.title ?? 'yok'}; patent numarası=${p
         input: [{
           role: 'user',
           content: [
-            { type: 'input_file', file_url: signed.data.signedUrl, detail: 'high' },
+            { type: 'input_file', file_url: signedPdfUrl, detail: 'high' },
             { type: 'input_text', text: prompt },
           ],
         }],
@@ -1151,41 +1218,53 @@ Mevcut kayıt bağlamı: başlık=${patent.title ?? 'yok'}; patent numarası=${p
       throw geminiError;
     };
 
-    if (preferGemini) {
-      try {
-        const gemini = await runGemini();
-        responseBody = gemini.body;
-        provider = 'gemini';
-        effectiveModel = gemini.model;
-      } catch (geminiError) {
-        if (!allowOpenAiFallback || !openAiKey || !canTryNextGeminiModel(geminiError)) throw geminiError;
-        fallbackFrom = `gemini:${providerErrorCode(geminiError).code || 'provider_unavailable'}`;
-        responseBody = await runOpenAi();
-        provider = 'openai';
-        effectiveModel = openAiModel;
+    let analysis: Analysis;
+    if (mode === 'complete_chatgpt') {
+      const importedRecord = record(importedAnalysis);
+      if (!cleanText(importedRecord.executive_summary, 20000)
+        || !cleanText(importedRecord.technical_problem, 20000)
+        || !cleanText(importedRecord.proposed_solution, 20000)) {
+        throw new Error('CHATGPT:CHATGPT_INVALID_RESULT:Required analysis fields are missing');
       }
+      provider = 'chatgpt-plus';
+      effectiveModel = 'browser-session';
+      analysis = sanitizeAnalysis(importedAnalysis);
     } else {
-      try {
-        responseBody = await runOpenAi();
-        provider = 'openai';
-        effectiveModel = openAiModel;
-      } catch (openAiError) {
-        if (!allowGeminiFallback || !geminiKey || !geminiModels.length || !canUseGeminiFallback(openAiError)) throw openAiError;
-        fallbackFrom = `openai:${providerErrorCode(openAiError).code || 'provider_unavailable'}`;
-        const gemini = await runGemini();
-        responseBody = gemini.body;
-        provider = 'gemini';
-        effectiveModel = gemini.model;
+      if (preferGemini) {
+        try {
+          const gemini = await runGemini();
+          responseBody = gemini.body;
+          provider = 'gemini';
+          effectiveModel = gemini.model;
+        } catch (geminiError) {
+          if (!allowOpenAiFallback || !openAiKey || !canTryNextGeminiModel(geminiError)) throw geminiError;
+          fallbackFrom = `gemini:${providerErrorCode(geminiError).code || 'provider_unavailable'}`;
+          responseBody = await runOpenAi();
+          provider = 'openai';
+          effectiveModel = openAiModel;
+        }
+      } else {
+        try {
+          responseBody = await runOpenAi();
+          provider = 'openai';
+          effectiveModel = openAiModel;
+        } catch (openAiError) {
+          if (!allowGeminiFallback || !geminiKey || !geminiModels.length || !canUseGeminiFallback(openAiError)) throw openAiError;
+          fallbackFrom = `openai:${providerErrorCode(openAiError).code || 'provider_unavailable'}`;
+          const gemini = await runGemini();
+          responseBody = gemini.body;
+          provider = 'gemini';
+          effectiveModel = gemini.model;
+        }
       }
-    }
 
-    const structuredText = provider === 'gemini' ? geminiOutputText(responseBody!) : outputText(responseBody!);
-    if (!structuredText) throw new Error('EMPTY_AI_RESPONSE');
-    let parsedAnalysis: unknown;
-    try { parsedAnalysis = JSON.parse(structuredText); } catch { throw new Error('INVALID_AI_RESPONSE'); }
-    let analysis = sanitizeAnalysis(parsedAnalysis);
+      const structuredText = provider === 'gemini' ? geminiOutputText(responseBody) : outputText(responseBody);
+      if (!structuredText) throw new Error('EMPTY_AI_RESPONSE');
+      let parsedAnalysis: unknown;
+      try { parsedAnalysis = JSON.parse(structuredText); } catch { throw new Error('INVALID_AI_RESPONSE'); }
+      analysis = sanitizeAnalysis(parsedAnalysis);
 
-    if (provider === 'gemini' && !analysis.extraction_audit.complete && geminiKey) {
+      if (provider === 'gemini' && !analysis.extraction_audit.complete && geminiKey) {
       try {
         const pdfBase64 = await loadGeminiPdfBase64();
         const auditPrompt = `Bu patent PDF'sindeki deney ve örnek tablolarını eksiksiz çıkaran kalite kontrol uzmanısın.
@@ -1242,6 +1321,7 @@ Yanıtı bitirmeden example_inventory ile her deney tablosundaki örnek kimlikle
       } catch (repairError) {
         console.error('EXPERIMENTAL_TABLE_REPAIR_FAILED', providerErrorCode(repairError).code || 'unknown');
         analysis.warnings.push('Eksik örnekler için ikinci tablo kontrolü tamamlanamadı; kaynak PDF ile manuel doğrulama gerekir.');
+      }
       }
     }
 
@@ -1321,10 +1401,10 @@ Yanıtı bitirmeden example_inventory ile her deney tablosundaki örnek kimlikle
       if (suggestionError) throw new Error(`SUGGESTION_WRITE_FAILED:${suggestionError.message}`);
     }
 
-    const usage = responseBody!.usage as JsonRecord | undefined;
+    const usage = responseBody?.usage as JsonRecord | undefined;
     const repairUsage = repairResponseBody?.usage as JsonRecord | undefined;
-    const baseInputTokens = provider === 'gemini' ? usage?.total_input_tokens : usage?.input_tokens;
-    const baseOutputTokens = provider === 'gemini' ? usage?.total_output_tokens : usage?.output_tokens;
+    const baseInputTokens = provider === 'gemini' ? usage?.total_input_tokens : provider === 'openai' ? usage?.input_tokens : undefined;
+    const baseOutputTokens = provider === 'gemini' ? usage?.total_output_tokens : provider === 'openai' ? usage?.output_tokens : undefined;
     const inputTokens = (typeof baseInputTokens === 'number' ? baseInputTokens : 0) + (typeof repairUsage?.total_input_tokens === 'number' ? repairUsage.total_input_tokens : 0);
     const outputTokens = (typeof baseOutputTokens === 'number' ? baseOutputTokens : 0) + (typeof repairUsage?.total_output_tokens === 'number' ? repairUsage.total_output_tokens : 0);
     const totalTokens = (typeof usage?.total_tokens === 'number' ? usage.total_tokens : inputTokens + outputTokens)
@@ -1341,9 +1421,9 @@ Yanıtı bitirmeden example_inventory ile her deney tablosundaki örnek kimlikle
       novelty_points: analysis.novelty_points,
       advantages: analysis.advantages,
       limitations_and_risks: analysis.limitations_and_risks,
-      input_tokens: typeof inputTokens === 'number' ? inputTokens : null,
-      output_tokens: typeof outputTokens === 'number' ? outputTokens : null,
-      total_tokens: typeof totalTokens === 'number' ? totalTokens : null,
+      input_tokens: provider === 'chatgpt-plus' ? null : inputTokens,
+      output_tokens: provider === 'chatgpt-plus' ? null : outputTokens,
+      total_tokens: provider === 'chatgpt-plus' ? null : totalTokens,
       completed_at: completedAt,
     }).eq('id', run.id);
     if (updateRunError) throw new Error(`RUN_WRITE_FAILED:${updateRunError.message}`);
@@ -1366,7 +1446,7 @@ Yanıtı bitirmeden example_inventory ile her deney tablosundaki örnek kimlikle
   } catch (error) {
     const rawMessage = error instanceof Error ? error.message : 'UNKNOWN_ERROR';
     const [prefix, code] = rawMessage.split(':');
-    const providerError = prefix === 'OPENAI' || prefix === 'GEMINI';
+    const providerError = prefix === 'OPENAI' || prefix === 'GEMINI' || prefix === 'CHATGPT';
     const errorCode = providerError ? code : rawMessage.slice(0, 80);
     const providerMessages: Record<string, string> = {
       insufficient_quota: 'Tarama kotası dolmuş veya faturalandırma etkin değil. Kota yenilendiğinde tekrar deneyin.',
@@ -1390,6 +1470,7 @@ Yanıtı bitirmeden example_inventory ile her deney tablosundaki örnek kimlikle
       response_failed: 'AI servisi bu PDF için geçerli bir sonuç üretemedi.',
       pdf_too_large: 'PDF, Gemini yedeğinin güvenli aktarım sınırı olan 20 MB’ı aşıyor. OpenAI ile deneyin veya PDF’yi küçültün.',
       pdf_download_failed: 'PDF Gemini yedeğine hazırlanamadı. Biraz sonra yeniden deneyin.',
+      CHATGPT_INVALID_RESULT: 'ChatGPT geçerli yapılandırılmış sonuç üretemedi. Yeniden deneyin.',
     };
     const safeMessage = providerError
       ? (providerMessages[errorCode] ?? 'Patent tarama servisi analizi tamamlayamadı. Bir süre sonra tekrar deneyin.')
@@ -1397,7 +1478,7 @@ Yanıtı bitirmeden example_inventory ile her deney tablosundaki örnek kimlikle
     const retryable = ['rate_limit_exceeded', 'too_many_requests', 'RESOURCE_EXHAUSTED', '429', 'DEADLINE_EXCEEDED', 'UNAVAILABLE', 'api_error', 'request_timeout', 'provider_unavailable', 'response_incomplete', 'response_failed'].includes(errorCode);
     const quotaCodes = ['rate_limit_exceeded', 'too_many_requests', 'RESOURCE_EXHAUSTED', '429'];
     const configCodes = ['insufficient_quota', 'credit_balance_exhausted', 'billing_hard_limit_reached', 'organization_usage_limit_exceeded', 'organization_spend_limit_exceeded', 'project_spend_limit_exceeded', 'invalid_api_key', 'API_KEY_INVALID'];
-    const httpStatus = quotaCodes.includes(errorCode) ? 429 : ['request_timeout', 'DEADLINE_EXCEEDED'].includes(errorCode) ? 504 : configCodes.includes(errorCode) ? 503 : 502;
+    const httpStatus = quotaCodes.includes(errorCode) ? 429 : ['request_timeout', 'DEADLINE_EXCEEDED'].includes(errorCode) ? 504 : errorCode === 'CHATGPT_INVALID_RESULT' ? 422 : configCodes.includes(errorCode) ? 503 : 502;
     const completedAt = new Date().toISOString();
     await serviceClient.from('ai_analysis_runs').update({
       status: 'FAILED', error_code: errorCode, error_message: safeMessage, completed_at: completedAt,

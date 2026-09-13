@@ -18,7 +18,10 @@
 7. Privileged functions are not placed in the exposed schema. Exposed search functions are security invoker and execute-granted only to `authenticated`.
 8. AI output is stored as suggestions and never overwrites user-confirmed data automatically.
 9. AI suggestion tables are read-only to clients; review mutations run in a JWT-verified Edge Function that checks the duplicated owner field against the authenticated user.
-10. Gemini requests originate only in the Edge Function, use strict structured output, and include explicit prompt-injection resistance.
+10. API-provider requests originate only in the Edge Function, use strict structured output, and include explicit prompt-injection resistance.
+11. The ChatGPT Plus bridge binds only to `127.0.0.1`, accepts browser requests only from the production Patentory origin or localhost, and accepts only short-lived signed URLs for the private `patent-pdfs` bucket.
+12. The bridge validates the PDF signature and 50 MB limit, uses an isolated persistent Chrome profile, deletes each temporary PDF after the run, and never sends ChatGPT cookies or credentials to Supabase or Vercel.
+13. Browser-imported analysis is scoped to an authenticated user's open run and is sanitized by the same server-side pipeline as API output before suggestions are written.
 
 ## Before a production release
 
@@ -29,4 +32,5 @@
 - Set Storage file-size/MIME limits and validate PDF magic bytes before analysis.
 - Confirm Android's permanent application ID and remote Play signing key, host the privacy policy, and complete the Data Safety disclosure.
 - Use short-lived signed PDF URLs and avoid logging signed URLs.
+- Verify the local bridge CORS allow-list, loopback binding, temporary-file cleanup, and dedicated ChatGPT profile before distribution.
 - Keep Auth JWT expiry short enough for the product's risk profile and revoke sessions before deleting users.

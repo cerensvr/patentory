@@ -9,6 +9,8 @@
     "next": "16.3.3"
   },
   "scripts": {
+    "bridge:start": "pnpm --filter @patent-knowledge/chatgpt-bridge start",
+    "bridge:install": "pnpm --filter @patent-knowledge/chatgpt-bridge install-autostart",
     "dev:web": "pnpm --filter @patent-knowledge/web dev",
     "dev:mobile": "pnpm --filter @patent-knowledge/mobile start",
     "build:web": "pnpm --filter @patent-knowledge/web build",

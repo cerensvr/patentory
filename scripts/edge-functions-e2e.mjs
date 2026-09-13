@@ -97,7 +97,7 @@ const mockServer = http.createServer((request, response) => {
     assert.ok(payload.response_format.schema.properties.patent_metadata.properties.abstract_tr);
     assert.ok(payload.response_format.schema.properties.examples.items.properties.summary_tr);
     assert.ok(payload.response_format.schema.properties.examples.items.properties.test_results.items.properties.test_name_tr);
-    assert.equal(payload.generation_config.max_output_tokens, 18000);
+    assert.equal(payload.generation_config.max_output_tokens, 60000);
     assert.equal(JSON.stringify(payload).includes('@example.test'), false);
     mockPrompts.push(payload.input[1].text);
     mockAttempts += 1;
@@ -226,7 +226,7 @@ try {
   const run = await request(`/rest/v1/ai_analysis_runs?id=eq.${analyzed.data.runId}&select=prompt_version,model,result_json`, { token: owner.token });
   assert.equal(run.data[0].prompt_version, 'patent-review-tr-v8');
   assert.equal(run.data[0].model, 'gemini:gemini-3.5-flash-lite');
-  assert.equal(run.data[0].result_json.examples[0].composition[1].component, 'IPDA');
+  assert.equal(run.data[0].result_json.examples[0].composition[1].component, 'İzoforon diamin');
   assert.equal(run.data[0].result_json.examples[0].production_steps[1].conditions[0], '80 °C');
   assert.equal(run.data[0].result_json.examples[0].test_results[0].method, 'ASTM D4541');
   assert.equal(run.data[0].result_json.extraction_audit.expected_count, 20);
@@ -234,6 +234,44 @@ try {
   assert.equal(run.data[0].result_json.extraction_audit.complete, true);
   assert.equal(run.data[0].result_json.experimental_tables[0].rows.length, 20);
   assert.ok(run.data[0].result_json.warnings.some((warning) => warning.includes('1 düşük güvenli')));
+
+  const chatGptPatent = await request('/rest/v1/patents?select=id', { method: 'POST', token: owner.token, body: { owner_user_id: owner.id, title: 'ChatGPT Bridge E2E patent', patent_number: 'QA-CHATGPT-001', country_code: 'EP' } });
+  assert.equal(chatGptPatent.response.status, 201, JSON.stringify(chatGptPatent.data));
+  const chatGptPatentId = chatGptPatent.data[0].id;
+  const chatGptPath = `${owner.id}/${chatGptPatentId}/${randomUUID()}.pdf`;
+  const chatGptUpload = await request(`/storage/v1/object/patent-pdfs/${chatGptPath}`, { method: 'POST', token: owner.token, body: pdf, contentType: 'application/pdf' });
+  assert.ok(chatGptUpload.response.ok, JSON.stringify(chatGptUpload.data));
+  const chatGptMetadata = await request(`/rest/v1/patents?id=eq.${chatGptPatentId}`, { method: 'PATCH', token: owner.token, body: { pdf_storage_path: chatGptPath, pdf_original_filename: 'chatgpt-e2e.pdf', pdf_size_bytes: pdf.length, pdf_mime_type: 'application/pdf' } });
+  assert.equal(chatGptMetadata.response.status, 204, JSON.stringify(chatGptMetadata.data));
+
+  const prepared = await request('/functions/v1/analyze-patent', { method: 'POST', token: owner.token, body: { patentId: chatGptPatentId, mode: 'prepare_chatgpt' } });
+  assert.equal(prepared.response.status, 200, JSON.stringify(prepared.data));
+  assert.match(prepared.data.pdfUrl, /\/storage\/v1\/object\/sign\/patent-pdfs\//);
+  assert.equal(prepared.data.pdfName, 'chatgpt-e2e.pdf');
+  assert.match(prepared.data.prompt, /yalnızca tek bir geçerli JSON nesnesi/i);
+  assert.match(prepared.data.prompt, /"executive_summary"/);
+  assert.equal(mockAttempts, 2, 'Preparing a ChatGPT Plus run must not call an API model');
+  const intruderCompletion = await request('/functions/v1/analyze-patent', { method: 'POST', token: intruder.token, body: { patentId: chatGptPatentId, mode: 'complete_chatgpt', runId: prepared.data.runId, analysis } });
+  assert.equal(intruderCompletion.response.status, 404);
+  const imported = await request('/functions/v1/analyze-patent', { method: 'POST', token: owner.token, body: { patentId: chatGptPatentId, mode: 'complete_chatgpt', runId: prepared.data.runId, analysis } });
+  assert.equal(imported.response.status, 200, JSON.stringify(imported.data));
+  assert.equal(imported.data.provider, 'chatgpt-plus');
+  assert.equal(imported.data.model, 'browser-session');
+  const importedRun = await request(`/rest/v1/ai_analysis_runs?id=eq.${prepared.data.runId}&select=status,model,total_tokens,result_json`, { token: owner.token });
+  assert.equal(importedRun.data[0].status, 'REVIEW_REQUIRED');
+  assert.equal(importedRun.data[0].model, 'chatgpt-plus:browser-session');
+  assert.equal(importedRun.data[0].total_tokens, null);
+  assert.equal(importedRun.data[0].result_json.executive_summary, analysis.executive_summary);
+
+  const failedPrepared = await request('/functions/v1/analyze-patent', { method: 'POST', token: owner.token, body: { patentId: chatGptPatentId, mode: 'prepare_chatgpt' } });
+  assert.equal(failedPrepared.response.status, 200, JSON.stringify(failedPrepared.data));
+  const failedBridge = await request('/functions/v1/analyze-patent', { method: 'POST', token: owner.token, body: { patentId: chatGptPatentId, mode: 'fail_chatgpt', runId: failedPrepared.data.runId, errorCode: 'LOGIN_REQUIRED' } });
+  assert.equal(failedBridge.response.status, 200, JSON.stringify(failedBridge.data));
+  assert.equal(failedBridge.data.code, 'LOGIN_REQUIRED');
+  const failedRun = await request(`/rest/v1/ai_analysis_runs?id=eq.${failedPrepared.data.runId}&select=status,error_code,error_message`, { token: owner.token });
+  assert.equal(failedRun.data[0].status, 'FAILED');
+  assert.equal(failedRun.data[0].error_code, 'LOGIN_REQUIRED');
+  assert.match(failedRun.data[0].error_message, /ChatGPT oturumu gerekli/);
 
   const forbidden = await request('/functions/v1/review-ai-suggestion', { method: 'POST', token: intruder.token, body: { suggestionId: ipda.id, decision: 'ACCEPTED' } });
   assert.equal(forbidden.response.status, 404);
@@ -278,7 +316,7 @@ try {
   assert.equal(deletedOwner.response.status, 200, JSON.stringify(deletedOwner.data));
   assert.equal(deletedOwner.data.deleted, true);
   owner = null;
-  console.log('EDGE_E2E_PASS metadata=US3684617A gemini_fallback=passed tables=v8 complete_examples=20/20 suggestions=5 suppressed=1 cross_user=blocked learning=accepted+corrected+reused account_deleted=true');
+  console.log('EDGE_E2E_PASS metadata=US3684617A gemini_fallback=passed chatgpt_bridge=prepare+complete+fail tables=v8 complete_examples=20/20 suggestions=5 suppressed=1 cross_user=blocked learning=accepted+corrected+reused account_deleted=true');
 } finally {
   for (const user of [owner, intruder]) {
     if (user) await request(`/auth/v1/admin/users/${user.id}`, { method: 'DELETE', key: serviceKey, token: serviceKey });

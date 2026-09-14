@@ -1,7 +1,7 @@
-import { createWriteStream } from 'node:fs';
+import { createWriteStream, existsSync } from 'node:fs';
 import { mkdir, mkdtemp, readFile, rm, stat } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
-import { basename, join } from 'node:path';
+import { basename, join, win32 as winPath } from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import { Readable, Transform } from 'node:stream';
 
@@ -153,10 +153,17 @@ async function downloadPdf(url, filePath) {
   if (signature.subarray(0, 5).toString('ascii') !== '%PDF-') throw new BridgeError('INVALID_PDF', 'İndirilen dosya geçerli bir PDF değil.', 422);
 }
 
-function chromeExecutable(environment = process.env) {
+export function chromeExecutable(environment = process.env, platform = process.platform, pathExists = existsSync) {
   if (environment.PATENTORY_CHROME_PATH) return environment.PATENTORY_CHROME_PATH;
-  if (process.platform === 'darwin') return '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
-  if (process.platform === 'win32') return 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
+  if (platform === 'darwin') return '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
+  if (platform === 'win32') {
+    const candidates = [
+      environment.PROGRAMFILES && winPath.join(environment.PROGRAMFILES, 'Google', 'Chrome', 'Application', 'chrome.exe'),
+      environment['PROGRAMFILES(X86)'] && winPath.join(environment['PROGRAMFILES(X86)'], 'Google', 'Chrome', 'Application', 'chrome.exe'),
+      environment.LOCALAPPDATA && winPath.join(environment.LOCALAPPDATA, 'Google', 'Chrome', 'Application', 'chrome.exe'),
+    ].filter(Boolean);
+    return candidates.find((candidate) => pathExists(candidate)) || candidates[0] || 'chrome.exe';
+  }
   return '/usr/bin/google-chrome';
 }
 
@@ -170,8 +177,12 @@ async function context(environment = process.env) {
   if (persistentContext) return persistentContext;
   const userDataDir = profileDirectory(environment);
   await mkdir(userDataDir, { recursive: true, mode: 0o700 });
+  const executablePath = chromeExecutable(environment);
+  if (!existsSync(executablePath)) {
+    throw new BridgeError('CHROME_NOT_FOUND', 'Google Chrome bulunamadı. Chrome’u kurup yeniden deneyin.', 503);
+  }
   persistentContext = await chromium.launchPersistentContext(userDataDir, {
-    executablePath: chromeExecutable(environment),
+    executablePath,
     headless: false,
     viewport: null,
     args: ['--start-maximized', '--disable-background-timer-throttling'],

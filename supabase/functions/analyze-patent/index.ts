@@ -929,7 +929,7 @@ Deno.serve(async (request) => {
     }
     run = { id: existingRun.id };
     if (mode === 'fail_chatgpt') {
-      const safeCode = ['LOGIN_REQUIRED', 'BRIDGE_UNAVAILABLE', 'BRIDGE_BUSY', 'CHATGPT_TIMEOUT', 'CHATGPT_INVALID_RESULT'].includes(bridgeErrorCode)
+      const safeCode = ['LOGIN_REQUIRED', 'BRIDGE_UNAVAILABLE', 'BRIDGE_BUSY', 'CHATGPT_TIMEOUT', 'CHATGPT_INVALID_RESULT', 'CHROME_NOT_FOUND'].includes(bridgeErrorCode)
         ? bridgeErrorCode
         : 'CHATGPT_BRIDGE_FAILED';
       const safeMessages: Record<string, string> = {
@@ -938,6 +938,7 @@ Deno.serve(async (request) => {
         BRIDGE_BUSY: 'Yerel ChatGPT köprüsü başka bir patent üzerinde çalışıyor.',
         CHATGPT_TIMEOUT: 'ChatGPT analizi beklenen sürede tamamlanmadı.',
         CHATGPT_INVALID_RESULT: 'ChatGPT geçerli yapılandırılmış sonuç üretemedi.',
+        CHROME_NOT_FOUND: 'Google Chrome bulunamadı. Chrome’u kurup yeniden deneyin.',
         CHATGPT_BRIDGE_FAILED: 'Yerel ChatGPT Plus analizi tamamlanamadı.',
       };
       const completedAt = new Date().toISOString();

@@ -53,6 +53,9 @@ const TYPE_LABELS: Record<string, string> = {
 };
 
 const CHATGPT_BRIDGE_URL = (process.env.NEXT_PUBLIC_CHATGPT_BRIDGE_URL ?? 'http://127.0.0.1:47831').replace(/\/$/, '');
+const WINDOWS_BRIDGE_DOWNLOAD_URL = process.env.NEXT_PUBLIC_WINDOWS_BRIDGE_DOWNLOAD_URL
+  ?? '/downloads/Patentory-Bridge-Setup-0.1.0-x64.exe';
+const BRIDGE_INSTALLED_KEY = 'patentory_chatgpt_bridge_installed';
 
 export function AiAnalysisPanel({ patentId, hasPdf, initialRun, initialSuggestions }: {
   patentId: string;
@@ -68,6 +71,8 @@ export function AiAnalysisPanel({ patentId, hasPdf, initialRun, initialSuggestio
   const [message, setMessage] = useState<string>();
   const [error, setError] = useState<string>();
   const [allowGeminiFallback, setAllowGeminiFallback] = useState(true);
+  const [showWindowsInstaller, setShowWindowsInstaller] = useState(false);
+  const [watchingForBridge, setWatchingForBridge] = useState(false);
   const analysis = useMemo(() => asAnalysis(initialRun?.result_json), [initialRun?.result_json]);
   const processing = busy || initialRun?.status === 'QUEUED' || initialRun?.status === 'PROCESSING';
 
@@ -76,6 +81,43 @@ export function AiAnalysisPanel({ patentId, hasPdf, initialRun, initialSuggestio
     const timer = window.setInterval(() => router.refresh(), 4500);
     return () => window.clearInterval(timer);
   }, [busy, processing, router]);
+
+  useEffect(() => {
+    if (!navigator.userAgent.includes('Windows')) return;
+    try {
+      if (window.localStorage.getItem(BRIDGE_INSTALLED_KEY) === '1') return;
+    } catch { /* The bridge can still be detected when storage is unavailable. */ }
+
+    let cancelled = false;
+    probeBridge().then((ready) => {
+      if (cancelled) return;
+      if (ready) rememberBridgeInstalled(setShowWindowsInstaller);
+      else setShowWindowsInstaller(true);
+    });
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    if (!watchingForBridge) return;
+    let cancelled = false;
+    let attempts = 0;
+    const timer = window.setInterval(async () => {
+      attempts += 1;
+      if (await probeBridge()) {
+        if (!cancelled) {
+          rememberBridgeInstalled(setShowWindowsInstaller);
+          setWatchingForBridge(false);
+          setMessage('Windows köprüsü kuruldu ve hazır. Bu kurulum düğmesi artık bu bilgisayarda gösterilmeyecek.');
+        }
+      } else if (attempts >= 60 && !cancelled) {
+        setWatchingForBridge(false);
+      }
+    }, 3000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [watchingForBridge]);
 
   async function analyze() {
     setBusy(true);
@@ -113,6 +155,7 @@ export function AiAnalysisPanel({ patentId, hasPdf, initialRun, initialSuggestio
         const code = typeof bridgeData?.code === 'string' ? bridgeData.code : 'CHATGPT_BRIDGE_FAILED';
         throw new LocalBridgeError(code, typeof bridgeData?.error === 'string' ? bridgeData.error : bridgeMessage(code));
       }
+      rememberBridgeInstalled(setShowWindowsInstaller);
 
       setMessage('ChatGPT bulguları Patentory’ye kaydediliyor…');
       const completed = await invokeAnalysis({ patentId, mode: 'complete_chatgpt', runId, analysis: bridgeData.analysis });
@@ -196,7 +239,22 @@ export function AiAnalysisPanel({ patentId, hasPdf, initialRun, initialSuggestio
         </div>
       </div>
 
-      <p className="ai-fallback-option"><span><strong>ChatGPT Plus, bu Mac’teki özel köprüyle otomatik kullanılır.</strong><small>İlk kullanımda açılan Chrome penceresinde bir kez giriş yapmanız gerekebilir. Sonraki taramalarda PDF yükleme, soru sorma ve sonucu kaydetme otomatik yapılır.</small></span></p>
+      <p className="ai-fallback-option"><span><strong>ChatGPT Plus, bu bilgisayardaki özel köprüyle otomatik kullanılır.</strong><small>İlk kullanımda açılan Chrome penceresinde bir kez giriş yapmanız gerekebilir. Sonraki taramalarda PDF yükleme, soru sorma ve sonucu kaydetme otomatik yapılır.</small></span></p>
+      {showWindowsInstaller && (
+        <div className="bridge-installer-card">
+          <span><strong>Windows köprüsünü bir kez kurun</strong><small>Kurucu köprüyü Windows açılışına ekler. Kurulum algılanınca bu düğme kalıcı olarak gizlenir.</small></span>
+          <a
+            className="primary-action"
+            href={WINDOWS_BRIDGE_DOWNLOAD_URL}
+            onClick={() => {
+              setWatchingForBridge(true);
+              setMessage('Kurucu indirildi. Windows onayını verip kurulumu tamamlayın; Patentory köprüyü otomatik algılayacak.');
+            }}
+          >
+            {watchingForBridge ? 'Kurulum bekleniyor…' : 'Windows köprüsünü kur'}
+          </a>
+        </div>
+      )}
       <details className="analysis-details">
         <summary>API ile yedek tarama</summary>
         <div>
@@ -659,7 +717,8 @@ async function invokeAnalysis(body: Record<string, unknown>) {
 function bridgeMessage(code: string) {
   return ({
     LOGIN_REQUIRED: 'Açılan Chrome penceresinde ChatGPT Plus hesabınıza bir kez giriş yapıp yeniden deneyin.',
-    BRIDGE_UNAVAILABLE: 'Bu Mac’teki ChatGPT köprüsüne ulaşılamadı. Köprü otomatik yeniden başlar; birkaç saniye sonra tekrar deneyin.',
+    BRIDGE_UNAVAILABLE: 'Bu bilgisayardaki ChatGPT köprüsüne ulaşılamadı. Köprü otomatik yeniden başlar; birkaç saniye sonra tekrar deneyin.',
+    CHROME_NOT_FOUND: 'Google Chrome bulunamadı. Chrome’u kurup yeniden deneyin.',
     BRIDGE_BUSY: 'ChatGPT köprüsü başka bir patent üzerinde çalışıyor. O tarama bitince yeniden deneyin.',
     CHATGPT_TIMEOUT: 'ChatGPT analizi beklenen sürede tamamlanmadı. Yeniden deneyin.',
     CHATGPT_INVALID_RESULT: 'ChatGPT geçerli bir analiz sonucu üretemedi. Yeniden deneyin.',
@@ -668,6 +727,25 @@ function bridgeMessage(code: string) {
     INVALID_PDF: 'Yüklenen dosya geçerli bir PDF değil.',
     CHATGPT_BRIDGE_FAILED: 'ChatGPT Plus taraması tamamlanamadı. Yeniden deneyin.',
   } as Record<string, string>)[code] ?? 'ChatGPT Plus taraması tamamlanamadı. Yeniden deneyin.';
+}
+
+async function probeBridge() {
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), 2500);
+  try {
+    const response = await fetch(`${CHATGPT_BRIDGE_URL}/health`, { signal: controller.signal });
+    const body = await response.json().catch(() => ({}));
+    return response.ok && body?.ok === true && body?.service === 'patentory-chatgpt-bridge';
+  } catch {
+    return false;
+  } finally {
+    window.clearTimeout(timer);
+  }
+}
+
+function rememberBridgeInstalled(setShowWindowsInstaller: (visible: boolean) => void) {
+  try { window.localStorage.setItem(BRIDGE_INSTALLED_KEY, '1'); } catch { /* Detection still hides it for this page. */ }
+  setShowWindowsInstaller(false);
 }
 
 async function responseMessage(context: unknown) {

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { BridgeError, extractJsonObject, isAllowedOrigin, safePdfName, validatePdfUrl } from '../src/lib.mjs';
+import { BridgeError, chromeExecutable, extractJsonObject, isAllowedOrigin, safePdfName, validatePdfUrl } from '../src/lib.mjs';
 
 test('extractJsonObject accepts direct and fenced JSON', () => {
   assert.deepEqual(extractJsonObject('{"ok":true}'), { ok: true });
@@ -31,4 +31,14 @@ test('signed Supabase patent PDF URLs are required', () => {
 test('PDF filenames cannot escape the temporary directory', () => {
   assert.equal(safePdfName('../../çok özel patent.pdf'), 'ok-zel-patent.pdf');
   assert.equal(safePdfName('report'), 'report.pdf');
+});
+
+test('Windows Chrome discovery supports machine and per-user installs', () => {
+  const environment = {
+    PROGRAMFILES: 'C:\\Program Files',
+    'PROGRAMFILES(X86)': 'C:\\Program Files (x86)',
+    LOCALAPPDATA: 'C:\\Users\\Ceren\\AppData\\Local',
+  };
+  const selected = chromeExecutable(environment, 'win32', (candidate) => candidate.includes('AppData'));
+  assert.equal(selected, 'C:\\Users\\Ceren\\AppData\\Local\\Google\\Chrome\\Application\\chrome.exe');
 });

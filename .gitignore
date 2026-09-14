@@ -16,6 +16,7 @@ apps/mobile/node_modules/
 apps/mobile/dist/
 apps/mobile/dist-android/
 apps/mobile/android/
+apps/chatgpt-bridge/dist/
 supabase/.branches/
 supabase/.temp/
 supabase/functions/.env
